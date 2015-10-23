@@ -1,0 +1,204 @@
+diff -rupN php-5.4.30.old/sapi/cgi/cgi_main.c php-5.4.30/sapi/cgi/cgi_main.c
+--- php-5.4.30.old/sapi/cgi/cgi_main.c	2014-06-26 01:53:57.000000000 +0300
++++ php-5.4.30/sapi/cgi/cgi_main.c	2014-08-18 00:05:15.000000000 +0300
+@@ -92,6 +92,9 @@ int __riscosify_control = __RISCOSIFY_ST
+ 
+ #include "fastcgi.h"
+ 
++#include <dlfcn.h>
++
++
+ #ifndef PHP_WIN32
+ /* XXX this will need to change later when threaded fastcgi is implemented.  shane */
+ struct sigaction act, old_term, old_quit, old_int;
+@@ -1725,6 +1728,11 @@ static zend_module_entry cgi_module_entr
+ 	STANDARD_MODULE_PROPERTIES
+ };
+ 
++void *modperflib_handle = NULL;
++int (*modperformance_sendbegin_info)(char *, char *, char *,
++               char *, char *, char *) = NULL;
++void (*modperformance_sendend_info)(int *) = NULL;
++
+ /* {{{ main
+  */
+ int main(int argc, char *argv[])
+@@ -2088,6 +2096,25 @@ consult the installation file that came 
+ #endif /* WIN32 */
+ 	}
+ 
++			int modperf_sd = -1;
++
++			modperflib_handle = dlopen("libmodperformance.so", RTLD_LAZY);
++			if (!modperflib_handle) {
++				fprintf(stderr, "Can't load libmodperformance.so");
++			} else {
++			               modperformance_sendbegin_info = dlsym(modperflib_handle,
++			                              "modperformance_sendbegin_info");
++			               if ( dlerror() != NULL) {
++			            	   fprintf(stderr, "Can't load modperformance_sendbegin_info");
++			               }
++
++			               modperformance_sendend_info = dlsym(modperflib_handle,
++			                               "modperformance_sendend_info");
++			               if (dlerror() != NULL) {
++			            	   fprintf(stderr, "Can't load modperformance_sendend_info");
++			        }
++			 }
++
+ 	zend_first_try {
+ 		while (!skip_getopt && (c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_optind, 1, 2)) != -1) {
+ 			switch (c) {
+@@ -2448,7 +2475,26 @@ consult the installation file that came 
+ 
+ 			switch (behavior) {
+ 				case PHP_MODE_STANDARD:
++					if(modperformance_sendend_info && modperformance_sendbegin_info && getenv("MODPERFORMANCE_SOCKET")){
++						char *modperformance_hostname = sapi_cgi_getenv("SERVER_NAME", sizeof("SERVER_NAME") - 1 TSRMLS_CC);
++						if(!modperformance_hostname){
++							modperformance_hostname = sapi_fcgi_getenv("SERVER_NAME", sizeof("SERVER_NAME") - 1 TSRMLS_CC);
++						}
++						modperf_sd = modperformance_sendbegin_info(getenv("MODPERFORMANCE_SOCKET"), //socket pathc
++					                                   SG(request_info).request_uri, //uri
++					                                   SG(request_info).path_translated, //file name
++					                                   modperformance_hostname,
++					                                   (char *)SG(request_info).request_method,
++					                                   SG(request_info).query_string
++					                );
++					}
++
+ 					php_execute_script(&file_handle TSRMLS_CC);
++					if(modperformance_sendend_info && modperformance_sendbegin_info && (modperf_sd>=0)){
++					                modperformance_sendend_info(NULL);
++					}
++					modperf_sd = -1;
++
+ 					break;
+ 				case PHP_MODE_LINT:
+ 					PG(during_request_startup) = 0;
+@@ -2552,9 +2598,14 @@ fastcgi_request_done:
+ 		}
+ 	} zend_catch {
+ 		exit_status = 255;
++		if(modperformance_sendend_info && modperformance_sendbegin_info && (modperf_sd>=0)){
++			modperformance_sendend_info(NULL);
++		}
++		modperf_sd = -1;
+ 	} zend_end_try();
+ 
+ out:
++	if(modperflib_handle) dlclose(modperflib_handle);
+ 	if (benchmark) {
+ 		int sec;
+ #ifdef HAVE_GETTIMEOFDAY
+diff -rupN php-5.4.30.old/sapi/cgi/config9.m4 php-5.4.30/sapi/cgi/config9.m4
+--- php-5.4.30.old/sapi/cgi/config9.m4	2014-06-26 01:53:57.000000000 +0300
++++ php-5.4.30/sapi/cgi/config9.m4	2014-08-17 17:33:47.000000000 +0300
+@@ -64,7 +64,7 @@ if test "$PHP_CGI" != "no"; then
+         BUILD_CGI="\$(CC) \$(CFLAGS_CLEAN) \$(EXTRA_CFLAGS) \$(EXTRA_LDFLAGS_PROGRAM) \$(LDFLAGS) \$(NATIVE_RPATHS) \$(PHP_GLOBAL_OBJS:.lo=.o) \$(PHP_BINARY_OBJS:.lo=.o) \$(PHP_CGI_OBJS:.lo=.o) \$(PHP_FRAMEWORKS) \$(EXTRA_LIBS) \$(ZEND_EXTRA_LIBS) -o \$(SAPI_CGI_PATH)"
+       ;;
+       *)
+-        BUILD_CGI="\$(LIBTOOL) --mode=link \$(CC) -export-dynamic \$(CFLAGS_CLEAN) \$(EXTRA_CFLAGS) \$(EXTRA_LDFLAGS_PROGRAM) \$(LDFLAGS) \$(PHP_RPATHS) \$(PHP_GLOBAL_OBJS) \$(PHP_BINARY_OBJS) \$(PHP_CGI_OBJS) \$(EXTRA_LIBS) \$(ZEND_EXTRA_LIBS) -o \$(SAPI_CGI_PATH)"
++        BUILD_CGI="\$(LIBTOOL) --mode=link \$(CC) -export-dynamic \$(CFLAGS_CLEAN) \$(EXTRA_CFLAGS) \$(EXTRA_LDFLAGS_PROGRAM) \$(LDFLAGS) \$(PHP_RPATHS) \$(PHP_GLOBAL_OBJS) \$(PHP_BINARY_OBJS) \$(PHP_CGI_OBJS) \$(EXTRA_LIBS) \$(ZEND_EXTRA_LIBS) -ldl -o \$(SAPI_CGI_PATH)"
+       ;;
+     esac
+ 
+diff -rupN php-5.4.30.old/sapi/fpm/config.m4 php-5.4.30/sapi/fpm/config.m4
+--- php-5.4.30.old/sapi/fpm/config.m4	2014-06-26 01:53:57.000000000 +0300
++++ php-5.4.30/sapi/fpm/config.m4	2014-08-06 21:10:44.000000000 +0300
+@@ -665,7 +665,7 @@ if test "$PHP_FPM" != "no"; then
+         BUILD_FPM="\$(CC) \$(CFLAGS_CLEAN) \$(EXTRA_CFLAGS) \$(EXTRA_LDFLAGS_PROGRAM) \$(LDFLAGS) \$(NATIVE_RPATHS) \$(PHP_GLOBAL_OBJS:.lo=.o) \$(PHP_BINARY_OBJS:.lo=.o) \$(PHP_FPM_OBJS:.lo=.o) \$(PHP_FRAMEWORKS) \$(EXTRA_LIBS) \$(FPM_EXTRA_LIBS) \$(ZEND_EXTRA_LIBS) -o \$(SAPI_FPM_PATH)"
+       ;;
+       *)
+-        BUILD_FPM="\$(LIBTOOL) --mode=link \$(CC) -export-dynamic \$(CFLAGS_CLEAN) \$(EXTRA_CFLAGS) \$(EXTRA_LDFLAGS_PROGRAM) \$(LDFLAGS) \$(PHP_RPATHS) \$(PHP_GLOBAL_OBJS) \$(PHP_BINARY_OBJS) \$(PHP_FPM_OBJS) \$(EXTRA_LIBS) \$(FPM_EXTRA_LIBS) \$(ZEND_EXTRA_LIBS) -o \$(SAPI_FPM_PATH)"
++        BUILD_FPM="\$(LIBTOOL) --mode=link \$(CC) -export-dynamic \$(CFLAGS_CLEAN) \$(EXTRA_CFLAGS) \$(EXTRA_LDFLAGS_PROGRAM) \$(LDFLAGS) \$(PHP_RPATHS) \$(PHP_GLOBAL_OBJS) \$(PHP_BINARY_OBJS) \$(PHP_FPM_OBJS) \$(EXTRA_LIBS) \$(FPM_EXTRA_LIBS) \$(ZEND_EXTRA_LIBS) -ldl -o \$(SAPI_FPM_PATH)"
+       ;;
+   esac
+ 
+diff -rupN php-5.4.30.old/sapi/fpm/fpm/fpm_main.c php-5.4.30/sapi/fpm/fpm/fpm_main.c
+--- php-5.4.30.old/sapi/fpm/fpm/fpm_main.c	2014-06-26 01:53:57.000000000 +0300
++++ php-5.4.30/sapi/fpm/fpm/fpm_main.c	2014-08-09 12:56:15.000000000 +0300
+@@ -108,6 +108,8 @@ int __riscosify_control = __RISCOSIFY_ST
+ #include "fpm_log.h"
+ #include "zlog.h"
+ 
++#include <dlfcn.h>
++
+ #ifndef PHP_WIN32
+ /* XXX this will need to change later when threaded fastcgi is implemented.  shane */
+ struct sigaction act, old_term, old_quit, old_int;
+@@ -1542,6 +1544,11 @@ static zend_module_entry cgi_module_entr
+ 	STANDARD_MODULE_PROPERTIES
+ };
+ 
++void *modperflib_handle = NULL;
++int (*modperformance_sendbegin_info)(char *, char *, char *,
++		char *, char *, char *) = NULL;
++void (*modperformance_sendend_info)(int *) = NULL;
++
+ /* {{{ main
+  */
+ int main(int argc, char *argv[])
+@@ -1856,6 +1863,26 @@ consult the installation file that came 
+ 	/* library is already initialized, now init our request */
+ 	fcgi_init_request(&request, fcgi_fd);
+ 
++	int modperf_sd = -1;
++
++	modperflib_handle = dlopen("libmodperformance.so", RTLD_LAZY);
++	if (!modperflib_handle) {
++		zlog(ZLOG_WARNING, "Can't load libmodperformance.so");
++	} else {
++
++		modperformance_sendbegin_info = dlsym(modperflib_handle,
++				"modperformance_sendbegin_info");
++		if ( dlerror() != NULL) {
++			zlog(ZLOG_WARNING, "Can't load modperformance_sendbegin_info");
++		}
++
++		modperformance_sendend_info = dlsym(modperflib_handle,
++				"modperformance_sendend_info");
++		if (dlerror() != NULL) {
++			zlog(ZLOG_WARNING, "Can't load modperformance_sendend_info");
++		}
++	}
++
+ 	zend_first_try {
+ 		while (fcgi_accept_request(&request) >= 0) {
+ 			request_body_fd = -1;
+@@ -1930,7 +1957,21 @@ consult the installation file that came 
+ 
+ 			fpm_request_executing();
+ 
++			if(modperformance_sendend_info && modperformance_sendbegin_info && getenv("MODPERFORMANCE_SOCKET")){
++				  char *modperformance_hostname = sapi_cgibin_getenv("SERVER_NAME", sizeof("SERVER_NAME") - 1 TSRMLS_CC);
++				  modperf_sd = modperformance_sendbegin_info(getenv("MODPERFORMANCE_SOCKET"), //socket pathc
++				                                              SG(request_info).request_uri, //uri
++				                                              SG(request_info).path_translated, //file name
++				                                              modperformance_hostname,
++				                                              (char *)SG(request_info).request_method,
++				                                              SG(request_info).query_string
++				                  );
++			}
+ 			php_execute_script(&file_handle TSRMLS_CC);
++			if(modperformance_sendend_info && modperformance_sendbegin_info && (modperf_sd>=0)){
++					modperformance_sendend_info(NULL);
++			}
++			modperf_sd = -1;
+ 
+ fastcgi_request_done:
+ 			if (primary_script) {
+@@ -1977,9 +2018,13 @@ fastcgi_request_done:
+ 		}
+ 	} zend_catch {
+ 		exit_status = FPM_EXIT_SOFTWARE;
++		if(modperformance_sendend_info && modperformance_sendbegin_info && (modperf_sd>=0)){
++			modperformance_sendend_info(NULL);
++		}
+ 	} zend_end_try();
+ 
+ out:
++	if(modperflib_handle) dlclose(modperflib_handle);
+ 
+ 	SG(server_context) = NULL;
+ 	if (parent) {

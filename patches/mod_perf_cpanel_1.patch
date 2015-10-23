@@ -1,0 +1,35 @@
+--- Makefile.old	2013-03-19 21:29:11.117457821 +0200
++++ Makefile	2013-03-19 21:29:57.131459776 +0200
+@@ -43,9 +43,9 @@ include /usr/share/apache2/build/special
+ else
+ 
+ builddir=.
+-top_srcdir=/etc/httpd
+-top_builddir=/usr/$(BLIB)/httpd
+-include /usr/$(BLIB)/httpd/build/special.mk
++top_srcdir=/usr/local/apache
++top_builddir=/usr/local/apache
++include /usr/local/apache/build/special.mk
+ 
+ endif
+ endif
+@@ -59,8 +59,8 @@ APACHECTL=apachectl
+ DEFS=$(APVER)
+ #get apache version
+ ifeq "$(APVER)" ""
+-APVER20 := $(shell apachectl -v | grep apache/2.0 -i)
+-APVER24 := $(shell apachectl -v | grep apache/2.4 -i)
++APVER20 := $(shell /usr/local/apache/bin/apachectl -v | grep apache/2.0 -i)
++APVER24 := $(shell /usr/local/apache/bin/apachectl -v | grep apache/2.4 -i)
+ ifneq "$(APVER20)" ""
+ DEFS=-DAPACHE2_0
+ endif
+@@ -89,7 +89,7 @@ install: install-modules-yes
+ 
+ #   cleanup
+ clean:
+-	-rm -f mod_performance.o mod_performance.lo mod_performance.slo mod_performance.la 
++	rm -f mod_performance.o mod_performance.lo mod_performance.slo mod_performance.la 
+ 
+ #   simple test
+ test: reload

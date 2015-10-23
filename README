@@ -1,0 +1,98 @@
+﻿Использование модуля
+
+Установка на CentOS5 (root)
+
+1) yum install httpd-devel apr-devel gd-devel sqlite3
+2) mkdir ~/tmp
+3) cd ~/tmp
+4) wget http://www.lexvit.dn.ua/modperf/getlast -O mod_performance.tar.gz 
+5) tar -xvf mod_performance.tar.gz --strip 1
+6) make
+7) cp ~/tmp/.libs/mod_performance.so /etc/httpd/modules/
+8) cp ~/tmp/mod_performance.conf /etc/httpd/conf.d/
+опционально, если не заработал с настройками по умолчанию
+9) mkdir -p /opt/performance/
+10) chown apache:apache /opt/performance/
+11) chmod 755 /opt/performance/
+12) раскомментировать в mod_performance.conf строки #PerformanceDB и #PerformanceSocket
+13) service httpd restart
+
+Установка на Debian 6
+1) apt-get install make apache2-prefork-dev libgd2-xpm-dev sqlite3
+2) mkdir ~/tmp
+3) cd ~/tmp
+4) wget http://www.lexvit.dn.ua/modperf/getlast -O mod_performance.tar.gz
+5) tar -xvf mod_performance.tar.gz --strip 1
+6) make
+7) cp ~/tmp/mod_performance.conf /etc/apache2/mods-available/
+8) echo «LoadModule performance_module /usr/lib/apache2/modules/mod_performance.so» > /etc/apache2/mods-available/mod_performance.load
+9) a2enmod mod_performance
+10) /etc/init.d/apache2 restart
+опционально, если не заработал с настройками по умолчанию
+11) mkdir -p /opt/performance/
+12) chown www-data:www-data /opt/performance/
+13) chmod 755 /opt/performance/
+14) раскомментировать в mod_performance.conf строки #PerformanceDB и #PerformanceSocket
+15) service apache2 restart
+
+Установка на FreeBSD 8.2 (root)
+
+1) pkg_add -rv apache
+2) pkg_add -rv apr-ipv6-devrandom-gdbm-db42
+3) pkg_add -rv gd
+4) pkg_add -rv wget
+5) cd ~/tmp
+6) wget http://www.lexvit.dn.ua/modperf/getlast -O mod_performance.tar.gz 
+7) tar -xvf mod_performance.tar.gz --strip 1
+8) gmake
+9) cp ~/tmp/.libs/mod_performance.so /usr/local/libexec/apache22/
+10) cp ~/tmp/mod_performance.conf /usr/local/etc/apache22/Includes/
+11) раскомментировать LoadModule performance_module libexec/apache22/mod_performance.so
+опционально, если не заработал с настройками по умолчанию
+12) mkdir -p /opt/performance/
+13) chown www:www /opt/performance/
+14) chmod 755 /opt/performance/
+15) раскомментировать в mod_performance.conf строки #PerformanceDB и #PerformanceSocket
+16) /usr/local/etc/rc.d/apache22 restart
+
+
+mod_performance - модуль для вычисления нагрузки, создаваемой сайтом
+Управляющие параметры
+ *  PerformanceSocket - путь к сокету
+ *  PerformanceEnabled - включить наблюдение
+ *  PerformanceHostFilter - список отслеживаемых хостов
+ *  PerformanceDB - путь к базе данных сведений
+ *  PerformanceHistory - число дней хранения истории
+ *  PerformanceWorkHandler - рабочий хандлер при котором выводится статистика
+ *  PerformanceURI - регулярное выражение фильтра по URI
+ *  PerformanceScript - регулярное выражение фильтра по имени скрипта
+ *  PerformanceUserHandler - рабочий хандлер при котором выводится статистика для хоста
+ *  PerformanceUseCanonical - использовать каноническое имя при логировании
+ *  PerformanceLog - путь к файлу логов
+ *  PerformanceLogFormat - формат выводимого лога (%DATE%, %CPU%, %MEM%, %URI%, %HOST%, %SCRIPT%, %EXCTIME%)
+ *  PerformanceLogType - тип логирования информации (Log, SQLite, MySQL, Postgres)
+ *  PerformanceDbUserName - пользователь для соединения с БД(MySQL,...)
+ *  PerformanceDBPassword - пароль для соединения с БД(MySQL,...)
+ *  PerformanceDBName - имя базы для соединения с БД(MySQL,...)
+ *  PerformanceDBHost - хост БД(MySQL,...)
+ *  PerformanceUseCPUTopMode - Irix/Solaris режим подсчета CPU % как в procps top (работает только в Linux)
+ *  PerformanceCheckDaemonTimeExec - время выполнения демона, после его истечения демон перезапускается в секундах или в формате HH:MM:SS - т.е. время каждого дня, когда перезапускается демон
+ *  PerformanceFragmentationTime - ежедневная дефрагментация базы данных. Только для MySQL
+ *  PerformanceExternalScript - список скриптов, которые будут обрабатываться внешними модулями, например - mod_fcgid, mod_cgid, suphp...
+ *  PerformanceMinExecTime - два параметра 1) число(в 1/100 секунды), 2) HARD/SOFT - задает минимальное время выполения скрипта и способ его сохранения HARD(не сохранять)/SOFT(сохранять с 0 %CPU)
+ *  PerformanceSilentMode - On/Off включить или выключить молчаливый режим
+ *  PerformanceSocketPermType - права доступа к сокету в формате ddd, например, 755 или 600..., а также имя сокета будет создаваться с PID{PID/NOPID} процесса или без него (PerformanceSocketPermType 600 PID)
+ *  PerformanceUseTid - On/Off считать статистику по TID/PID
+ *  PerformanceHostId - имя сервера для которого пишутся данные (по умолчанию localhost)
+ *  PerformanceCustomReports - путь к файлу, описывающему отчеты
+ *
+Устаревшие
+ *  PerformanceMaxThreads
+ *  PerformanceStackSize
+ *  PerformanceExtended
+ *  PerformancePeriodicalWatch
+  
+Типовые настройки модуля в файле mod_performance.conf - раскомментируйте необходимые опции
+
+
+  

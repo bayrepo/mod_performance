@@ -1,0 +1,99 @@
+diff -rupN suphp-0.7.2.old/modperf_su_php0.7.1_2011_07_20.patch suphp-0.7.2/modperf_su_php0.7.1_2011_07_20.patch
+diff -rupN suphp-0.7.2.old/src/apache2/mod_suphp.c suphp-0.7.2/src/apache2/mod_suphp.c
+--- suphp-0.7.2.old/src/apache2/mod_suphp.c	2014-07-01 01:57:35.625098208 +0300
++++ suphp-0.7.2/src/apache2/mod_suphp.c	2014-07-01 01:59:54.226714030 +0300
+@@ -23,6 +23,7 @@
+ #include "apr_thread_proc.h"
+ #include "apr_buckets.h"
+ #include "apr_poll.h"
++#include "apr_optional.h"
+ 
+ #define CORE_PRIVATE
+ 
+@@ -39,6 +40,14 @@
+ 
+ module AP_MODULE_DECLARE_DATA suphp_module;
+ 
++APR_DECLARE_OPTIONAL_FN (void, send_begininfo_to_daemon,
++                         (request_rec * r, pid_t pid, int *sd));
++APR_DECLARE_OPTIONAL_FN (void, send_endinfo_to_daemon,
++                         (request_rec * r, pid_t pid, int *sd));
++
++APR_OPTIONAL_FN_TYPE(send_begininfo_to_daemon) *send_begininfo_to_daemon = NULL;
++APR_OPTIONAL_FN_TYPE(send_endinfo_to_daemon) *send_endinfo_to_daemon = NULL;
++
+ 
+ /*********************
+   Auxiliary functions
+@@ -581,6 +590,7 @@ static int suphp_handler(request_rec *r)
+ 
+ static int suphp_source_handler(request_rec *r)
+ {
++    int sd_perf;
+     suphp_conf *conf;
+     apr_status_t rv;
+     apr_pool_t *p = r->main ? r->main->pool : r->pool;
+@@ -662,6 +672,9 @@ static int suphp_source_handler(request_
+                      "couldn't create child process: %s for %s", phpexec, r->filename);
+        return HTTP_INTERNAL_SERVER_ERROR;
+     }
++
++    if(send_begininfo_to_daemon&&send_endinfo_to_daemon)
++          send_begininfo_to_daemon(r, proc->pid, &sd_perf);
+     apr_pool_note_subprocess(p, proc, APR_KILL_AFTER_TIMEOUT);
+ 
+     if (!proc->out)
+@@ -684,6 +697,8 @@ static int suphp_source_handler(request_
+     apr_file_close(proc->in);
+ 
+     rv = ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, HUGE_STRING_LEN);
++    if(send_begininfo_to_daemon&&send_endinfo_to_daemon)
++          send_endinfo_to_daemon(r, proc->pid, &sd_perf);
+     if (rv != APR_SUCCESS)
+     {
+         ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
+@@ -725,6 +740,7 @@ static int suphp_source_handler(request_
+ 
+ static int suphp_script_handler(request_rec *r)
+ {
++    int sd_perf;
+     apr_pool_t *p;
+     suphp_conf *sconf;
+     suphp_conf *dconf;
+@@ -949,6 +965,9 @@ static int suphp_script_handler(request_
+                      "couldn't create child process: %s for %s", SUPHP_PATH_TO_SUPHP, r->filename);
+        return HTTP_INTERNAL_SERVER_ERROR;
+     }
++
++    if(send_begininfo_to_daemon&&send_endinfo_to_daemon)
++      send_begininfo_to_daemon(r, proc->pid, &sd_perf);
+     apr_pool_note_subprocess(p, proc, APR_KILL_AFTER_TIMEOUT);
+ 
+     if (!proc->out)
+@@ -1028,6 +1047,8 @@ static int suphp_script_handler(request_
+     {
+         nph = 1;
+     }
++    if(send_begininfo_to_daemon&&send_endinfo_to_daemon)
++      send_endinfo_to_daemon(r, proc->pid, &sd_perf);
+ 
+     if (!nph)
+     {
+@@ -1118,9 +1139,15 @@ static int suphp_script_handler(request_
+     return OK;
+ }
+ 
++static void x_child_init(apr_pool_t *p, server_rec *s){
++  send_begininfo_to_daemon = APR_RETRIEVE_OPTIONAL_FN(send_begininfo_to_daemon);
++  send_endinfo_to_daemon = APR_RETRIEVE_OPTIONAL_FN(send_endinfo_to_daemon);
++}
++
+ static void suphp_register_hooks(apr_pool_t *p)
+ {
+     ap_hook_handler(suphp_handler, NULL, NULL, APR_HOOK_MIDDLE);
++    ap_hook_child_init(x_child_init, NULL, NULL, APR_HOOK_MIDDLE);
+ }
+ 
+ 
+diff -rupN suphp-0.7.2.old/src/apache2/mod_suphp.c.orig suphp-0.7.2/src/apache2/mod_suphp.c.orig
+diff -rupN suphp-0.7.2.old/src/apache2/mod_suphp.c.rej suphp-0.7.2/src/apache2/mod_suphp.c.rej
