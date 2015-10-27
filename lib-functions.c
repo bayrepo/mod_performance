@@ -85,7 +85,7 @@ static int connect_to_daemon_inner(int * sdptr, char *socket_path) {
 
 	memset(&unix_addr, 0, sizeof(unix_addr));
 	unix_addr.sun_family = AF_UNIX;
-	strncpy(unix_addr.sun_path, socket_path, sizeof unix_addr.sun_path);
+	strncpy(unix_addr.sun_path, socket_path, (sizeof unix_addr.sun_path)-1);
 	if ((sd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
 		return -1;
 	if (connect(sd, (struct sockaddr *) &unix_addr, sizeof(unix_addr)) < 0) {

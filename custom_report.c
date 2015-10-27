@@ -164,7 +164,7 @@ char *custom_report_pasre_sql_filter(char *select, apr_pool_t *pool,
 	if(period){
 		result = custom_report_replace(select, ":PERIOD:", period, pool);
 	}
-	if(filter){
+	if(filter && result){
 		result = custom_report_replace(result, ":FILTER:", filter, pool);
 	}
 	return result;

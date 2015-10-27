@@ -26,7 +26,7 @@
 #ifndef COMMON_H_
 #define COMMON_H_
 
-#define PERFORMANCE_MODULE_VERSION "0.4-7"
+#define PERFORMANCE_MODULE_VERSION "0.4-8"
 
 #define MODULE_PREFFIX "mod_performance: "
 #define ITEMS_PER_PAGE 100

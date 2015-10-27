@@ -480,24 +480,26 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 	case 3: {
 		//extract port number form host
 		char host_only[512], port_only[512];
-		if (strstr(host, ":")) {
+
+		if (strstr((host?host:"localhost"), ":")) {
 			char *pos = strstr(host, ":");
 			strncpy(host_only, host, pos - host);
 			host_only[pos - host] = '\0';
 			strncpy(port_only, pos + 1, strlen(host) - (pos - host));
 			port_only[strlen(host) - (pos - host)] = '\0';
 		} else {
-			strncpy(host_only, host, 512);
+			strncpy(host_only, host?host:"localhost", 512);
 			strncpy(port_only, "", 512);
 			host_only[511] = '\0';
 			port_only[511] = '\0';
 		}
 
+
 		//PgSql
 		char *connect_string;
 		if (!port_only[0])
 			connect_string = apr_psprintf(p,
-					"host=%s dbname=%s user=%s password=%s", host, dbname,
+					"host=%s dbname=%s user=%s password=%s", host?host:"localhost", dbname,
 					username, password);
 		else
 			connect_string = apr_psprintf(p,

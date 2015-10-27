@@ -1429,7 +1429,7 @@ void performance_server_main_cycle(int l_sock, server_rec *main_server,
 	int timeout = 1000;
 	init_global_mem();
 	struct sockaddr_un fsaun;
-	socklen_t fromlen = (socklen_t) sizeof((struct sockaddr *) &fsaun);
+	socklen_t fromlen = (socklen_t) sizeof(fsaun);
 	nfds = 1;
 	fds = (struct pollfd *) calloc(1, nfds * sizeof(struct pollfd));
 	fds->fd = l_sock;
@@ -1696,12 +1696,14 @@ static int performance_module_server(void *data) {
 		ap_log_error(APLOG_MARK, APLOG_CRIT, rv, main_server, MODULE_PREFFIX
 		"Couldn't set permissions on unix domain socket %s",
 				performance_socket);
+		close(sd);
 		return rv;
 	}
 
 	if (listen(sd, DEFAULT_PERF_LISTENBACKLOG) < 0) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
 		MODULE_PREFFIX "Couldn't listen on unix domain socket");
+		close(sd);
 		return errno;
 	}
 
@@ -1711,6 +1713,7 @@ static int performance_module_server(void *data) {
 			MODULE_PREFFIX
 			"Couldn't change owner of unix domain socket %s",
 					performance_socket);
+			close(sd);
 			return errno;
 		}
 	}
@@ -1784,6 +1787,7 @@ static int performance_module_server(void *data) {
 	}
 
 	apr_thread_mutex_destroy(mutex_db);
+	close(sd);
 
 	return -1;
 }
@@ -1939,8 +1943,15 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 			}
 		}
 
-		apr_thread_mutex_create(&mutex_db, APR_THREAD_MUTEX_DEFAULT,
+		apr_status_t rv_tmp = apr_thread_mutex_create(&mutex_db, APR_THREAD_MUTEX_DEFAULT,
 				main_server->process->pool);
+		if (rv_tmp != APR_SUCCESS){
+			cfg->performance_enabled = 0;
+			ap_log_error(APLOG_MARK, APLOG_WARNING, errno, main_server,
+				MODULE_PREFFIX
+				"Internal error(can't create db mutex), performance module will be disabled :(");
+		}
+
 		if (log_type) {
 			if (!sqlite3_check_for_tables(p, main_server)) {
 				cfg->performance_enabled = 0;
@@ -2116,9 +2127,9 @@ static int match_script(apr_array_header_t * scripts_list,
 static int own_connect(int socket, struct sockaddr *addr, socklen_t length) {
 	errno = 0;
 	if (!performance_blocksave) {
-		int rt_code;
+		int rt_code, rt_code2;
 		rt_code = fcntl(socket, F_GETFL, 0);
-		fcntl(socket, F_SETFL, rt_code | O_NONBLOCK);
+		rt_code2 = fcntl(socket, F_SETFL, rt_code | O_NONBLOCK);
 
 		fd_set set;
 		int ret = 0;
@@ -2463,7 +2474,7 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 		write_debug_info(
 				"Proceed handler %s - PID %d, TID %d End cicle FD %d %s",
 				r->handler ? r->handler : "NULL", getpid(), gettid(), sd,
-				req->uri ? r->uri : "NULL");
+				req->uri);
 
 		if (performance_send_data_to(sd, (const void *) req,
 				sizeof(performance_module_send_req)) != APR_SUCCESS) {
@@ -2477,12 +2488,12 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 			write_debug_info(
 					"Proceed handler %s - PID %d, TID %d End error FD %d %s",
 					r->handler ? r->handler : "NULL", getpid(), gettid(), sd,
-					req->uri ? r->uri : "NULL");
+					req->uri );
 		}
 		write_debug_info(
 				"Proceed handler %s - PID %d, TID %d End cicle ok FD %d %s",
 				r->handler ? r->handler : "NULL", getpid(), gettid(), sd,
-				req->uri ? r->uri : "NULL");
+				req->uri);
 
 		shutdown(sd, SHUT_RDWR);
 		close(sd);
@@ -2619,6 +2630,8 @@ APR_DECLARE_OPTIONAL_FN(int, match_external_handlers, (request_rec * r));
 
 void send_begininfo_to_daemon(request_rec * r, pid_t pid, int *sd) {
 
+	if(!r && !r->server) return;
+
 	performance_module_cfg *cfg = performance_module_sconfig(r);
 
 	if (!*sd) {
@@ -2631,7 +2644,7 @@ void send_begininfo_to_daemon(request_rec * r, pid_t pid, int *sd) {
 			sizeof(performance_module_send_req));
 
 	modperformance_sendbegin_info_send_info(req, r->uri, r->filename,
-			r->server ? r->server->server_hostname : "", (char *) r->method,
+			r->server->server_hostname, (char *) r->method,
 			r->args, r->canonical_filename, 0, r->server, r->pool,
 			cfg->performance_use_cononical_name);
 

@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 7%{?dist}
+Release: 8%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -53,6 +53,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libmodperformance.so.0.4
 
 %changelog
+* Tue Oct 27 2015 Alexey Berezhok <alexey_com@ukr.net> 0.4-8
+- Bug fixes
+
 * Wed Oct 29 2014 Alexey Berezhok <alexey_com@ukr.net> 0.4-7
 - Cosmetic fixes
 

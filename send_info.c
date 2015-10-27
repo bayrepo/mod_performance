@@ -103,6 +103,7 @@ void modperformance_sendbegin_info_send_info(performance_module_send_req *req,
 		char *canonical_filename, int use_tid, server_rec *server,
 		apr_pool_t *pool, int performance_use_cononical_name) {
 
+	char str_b[512] = "";
 	double time_start;
 	struct timeval tm;
 	gettimeofday(&tm, NULL);
@@ -125,7 +126,6 @@ void modperformance_sendbegin_info_send_info(performance_module_send_req *req,
 #ifndef _LIBBUILD
 	if(!pool){
 #endif
-	char str_b[512] = "";
 	snprintf(str_b, 512, "%s:%s%s%s", method, req->uri,
 			args ? "?" : "", args ? args : "");
 	str = str_b;
@@ -174,6 +174,7 @@ void modperformance_sendbegin_info_send_info(performance_module_send_req *req,
 void modperformance_sendend_info_send_info(performance_module_send_req *req,
 		char *uri, char *hostname, char *method, char *args, int use_tid,
 		server_rec *server, apr_pool_t *pool) {
+	char str_b[512] = "";
 	double time_start2;
 	struct timeval tm;
 	gettimeofday(&tm, NULL);
@@ -198,7 +199,6 @@ void modperformance_sendend_info_send_info(performance_module_send_req *req,
 #ifndef _LIBBUILD
 	if(!pool){
 #endif
-		char str_b[512] = "";
 		snprintf(str_b, 512, "%s:%s%s%s", method, req->uri,
 			args ? "?" : "", args ? args : "");
 		str = str_b;
