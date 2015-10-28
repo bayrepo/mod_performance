@@ -2630,7 +2630,7 @@ APR_DECLARE_OPTIONAL_FN(int, match_external_handlers, (request_rec * r));
 
 void send_begininfo_to_daemon(request_rec * r, pid_t pid, int *sd) {
 
-	if(!r && !r->server) return;
+	if(!r || !r->server) return;
 
 	performance_module_cfg *cfg = performance_module_sconfig(r);
 

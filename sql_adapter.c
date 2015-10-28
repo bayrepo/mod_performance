@@ -481,7 +481,7 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 		//extract port number form host
 		char host_only[512], port_only[512];
 
-		if (strstr((host?host:"localhost"), ":")) {
+		if (strstr((host?host:"localhost"), ":") && host) {
 			char *pos = strstr(host, ":");
 			strncpy(host_only, host, pos - host);
 			host_only[pos - host] = '\0';
