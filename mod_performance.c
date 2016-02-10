@@ -2347,7 +2347,7 @@ static int performance_module_handler(request_rec * r) {
 		return DECLINED;
 	}
 
-	if (log_type) {
+	if (log_type && cfg->performance_enabled) {
 
 		if (!apr_strnatcmp(r->handler, cfg->performance_work_handler)) {
 			form_page_content(r, 0);

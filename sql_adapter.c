@@ -52,7 +52,11 @@ char *get_host_id();
 #define LOAD_FUNCTION(x) _##x = dlsym(lib_handle, #x); \
                 if ((error = dlerror()) != NULL) {\
                         return -1; \
+                } else if ( !_##x ) { \
+                	return -1; \
                 }
+
+
 
 //-------------------MySQL section----------------------------
 #define M_mysql_store_result void * (*_mysql_store_result)(void *)
@@ -387,7 +391,10 @@ int sql_adapter_load_library(apr_pool_t * p, int db_type) {
 			//PgSql
 			lib_handle = dlopen("libpq.so", RTLD_LAZY);
 			if (!lib_handle) {
-				return -1;
+				lib_handle = dlopen("libpq.so.5", RTLD_LAZY);
+				if (!lib_handle) {
+					return -1;
+				}
 			}
 			LOAD_FUNCTION(PQexec);
 			LOAD_FUNCTION(PQerrorMessage);
