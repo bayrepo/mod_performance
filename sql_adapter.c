@@ -150,6 +150,8 @@ typedef int (*sqlite3_callback)(void *, int, char **, char **);
 #define M_sqlite3_reset int (*_sqlite3_reset)(sqlite3_stmt *pStmt)
 #define M_sqlite3_column_int int (*_sqlite3_column_int)(sqlite3_stmt*, int iCol)
 #define M_sqlite3_column_double double (*_sqlite3_column_double)(sqlite3_stmt*, int iCol)
+#define M_sqlite3_errstr const char * (*_sqlite3_errstr)(int)
+#define M_sqlite3_errmsg const char * (*_sqlite3_errmsg)(sqlite3 *)
 
 M_sqlite3_exec = NULL;
 M_sqlite3_mprintf = NULL;
@@ -163,6 +165,8 @@ M_sqlite3_column_text = NULL;
 M_sqlite3_reset = NULL;
 M_sqlite3_column_int = NULL;
 M_sqlite3_column_double = NULL;
+M_sqlite3_errstr = NULL;
+M_sqlite3_errmsg = NULL;
 
 #define SQLITE_OK           0	/* Successful result */
 /* beginning-of-error-codes */
@@ -354,6 +358,8 @@ int sql_adapter_load_library(apr_pool_t * p, int db_type) {
 			LOAD_FUNCTION(sqlite3_reset);
 			LOAD_FUNCTION(sqlite3_column_int);
 			LOAD_FUNCTION(sqlite3_column_double);
+			LOAD_FUNCTION(sqlite3_errstr);
+			LOAD_FUNCTION(sqlite3_errmsg);
 			break;
 		case 2:
 			//MySQL common
@@ -430,6 +436,25 @@ static int smysql_reconnect(MYSQL ** ptr) {
 		}
 	}
 	return 0;
+}
+
+static char *get_error_description(void *db, char *str, apr_pool_t * p, int db_type){
+	char *new_str = str;
+	switch (db_type) {
+	case 1:
+		//SqLite - libsqlite3.so
+		new_str = apr_psprintf(p, "%s : %s", str, (*_sqlite3_errmsg)((sqlite3 *)db));
+		break;
+	case 2:
+		//MySQL common
+		new_str = apr_psprintf(p, "%s : %s", str, (*_mysql_error)(db));
+		break;
+	case 3:
+		//PgSql
+		new_str = apr_psprintf(p, "%s : %s", str, (*_PQerrorMessage)((const PGconn *)db));
+		break;
+	}
+	return new_str;
 }
 
 int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
@@ -1133,7 +1158,7 @@ sql_adapter_get_full_text_info(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1169,7 +1194,7 @@ sql_adapter_get_full_text_info(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1187,7 +1212,7 @@ sql_adapter_get_full_text_info(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1203,7 +1228,7 @@ sql_adapter_get_full_text_info(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 	}
@@ -1234,7 +1259,7 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1259,7 +1284,7 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1276,7 +1301,7 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1286,7 +1311,7 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 	}
@@ -1351,7 +1376,7 @@ sql_adapter_get_full_text_info_picture(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1381,7 +1406,7 @@ sql_adapter_get_full_text_info_picture(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1399,7 +1424,7 @@ sql_adapter_get_full_text_info_picture(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1413,7 +1438,7 @@ sql_adapter_get_full_text_info_picture(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 	}
@@ -1470,7 +1495,7 @@ sql_adapter_get_cpu_max_text_info(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1506,7 +1531,7 @@ sql_adapter_get_cpu_max_text_info(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1524,7 +1549,7 @@ sql_adapter_get_cpu_max_text_info(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1540,7 +1565,7 @@ sql_adapter_get_cpu_max_text_info(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 	}
@@ -1588,7 +1613,7 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1624,7 +1649,7 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1642,7 +1667,7 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1658,7 +1683,7 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 	}
@@ -1713,7 +1738,7 @@ sql_adapter_get_mem_max_text_info(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1749,7 +1774,7 @@ sql_adapter_get_mem_max_text_info(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1767,7 +1792,7 @@ sql_adapter_get_mem_max_text_info(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1783,7 +1808,7 @@ sql_adapter_get_mem_max_text_info(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -1831,7 +1856,7 @@ sql_adapter_get_mem_max_text_info_no_hard(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1867,7 +1892,7 @@ sql_adapter_get_mem_max_text_info_no_hard(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -1885,7 +1910,7 @@ sql_adapter_get_mem_max_text_info_no_hard(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -1901,7 +1926,7 @@ sql_adapter_get_mem_max_text_info_no_hard(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -1956,7 +1981,7 @@ sql_adapter_get_time_max_text_info(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -1992,7 +2017,7 @@ sql_adapter_get_time_max_text_info(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2010,7 +2035,7 @@ sql_adapter_get_time_max_text_info(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2026,7 +2051,7 @@ sql_adapter_get_time_max_text_info(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2074,7 +2099,7 @@ sql_adapter_get_time_max_text_info_no_hard(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2110,7 +2135,7 @@ sql_adapter_get_time_max_text_info_no_hard(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2128,7 +2153,7 @@ sql_adapter_get_time_max_text_info_no_hard(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2144,7 +2169,7 @@ sql_adapter_get_time_max_text_info_no_hard(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2187,7 +2212,7 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2214,7 +2239,7 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2230,7 +2255,7 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2242,7 +2267,7 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2286,7 +2311,7 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2312,7 +2337,7 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2328,7 +2353,7 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2339,7 +2364,7 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2390,7 +2415,7 @@ sql_adapter_get_avg_text_info(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2420,7 +2445,7 @@ sql_adapter_get_avg_text_info(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2437,7 +2462,7 @@ sql_adapter_get_avg_text_info(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2450,7 +2475,7 @@ sql_adapter_get_avg_text_info(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2499,7 +2524,7 @@ sql_adapter_get_avg_text_info_picture(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2530,7 +2555,7 @@ sql_adapter_get_avg_text_info_picture(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2547,7 +2572,7 @@ sql_adapter_get_avg_text_info_picture(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2560,7 +2585,7 @@ sql_adapter_get_avg_text_info_picture(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2633,7 +2658,7 @@ sql_adapter_get_exec_tm(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2666,7 +2691,7 @@ sql_adapter_get_exec_tm(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2683,7 +2708,7 @@ sql_adapter_get_exec_tm(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2698,7 +2723,7 @@ sql_adapter_get_exec_tm(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2744,7 +2769,7 @@ sql_adapter_get_exec_tm_common(
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2777,7 +2802,7 @@ sql_adapter_get_exec_tm_common(
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2794,7 +2819,7 @@ sql_adapter_get_exec_tm_common(
 	{
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2809,7 +2834,7 @@ sql_adapter_get_exec_tm_common(
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}
@@ -2843,7 +2868,7 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 		rv = (*_sqlite3_prepare)(s_db_r, string_sql, strlen(string_sql), &stmt,
 				0);
 		if (rv) {
-			return string_sql;
+			return get_error_description(s_db_r, string_sql, p, db_type);
 		} else {
 			while (1) {
 				rv = (*_sqlite3_step)(stmt);
@@ -2883,7 +2908,7 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 		mysql_reconnect(m_db_r);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
-				return string_sql;
+				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
 			MYSQL_ROW row;
@@ -2912,7 +2937,7 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 						apr_pstrcat(p," 1=1 ", sql_adapter_get_filter(p, host, script, uri, db_type, NULL),NULL));
 		PGresult *result;
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
 			int i;
@@ -2922,11 +2947,12 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 				for (j = 0; j < item->fields_list->nelts; j++) {
 					ap_rvputs(r, "<td>", PG_GETVALUE (i, j), "</td>", NULL);
 				}
-				ap_rputs("</tr>\n", r);
+				ap_rputs("</tr>\n"
+						, r);
 			}
 		} else {
 			PQClear(result);
-			return string_sql;
+			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 	}

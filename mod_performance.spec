@@ -53,6 +53,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libmodperformance.so.0.4
 
 %changelog
+* Sat Feb 13 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-10
+- Added db request error description sent to error_log
+
 * Thu Feb 11 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-9
 - Bug fixes
 

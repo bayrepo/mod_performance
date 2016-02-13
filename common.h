@@ -26,11 +26,11 @@
 #ifndef COMMON_H_
 #define COMMON_H_
 
-#define PERFORMANCE_MODULE_VERSION "0.4-9"
+#define PERFORMANCE_MODULE_VERSION "0.4-10"
 
 #define MODULE_PREFFIX "mod_performance: "
 #define ITEMS_PER_PAGE 100
-#define FRESH_VERSION_URL "http://git.bayrepo.net/modperformance/snapshot/modperformance-master.tar.gz"
+#define FRESH_VERSION_URL "https://github.com/bayrepo/mod_performance/archive/master.zip"
 #define DOCUMENTATION_URL "http://wiki.bayrepo.net/docs"
 
 char *performance_module_get_parameter_from_uri (request_rec * r, char *name);
