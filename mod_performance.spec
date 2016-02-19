@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 11%{?dist}
+Release: 12%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -53,6 +53,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libmodperformance.so.0.4
 
 %changelog
+* Mon Feb 19 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-12
+- Change select with poll for preventing buffer overflow
+
 * Mon Feb 15 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-11
 - Added pgsql reconnect
 

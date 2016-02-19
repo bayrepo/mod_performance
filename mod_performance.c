@@ -2128,16 +2128,16 @@ static int own_connect(int socket, struct sockaddr *addr, socklen_t length) {
 	errno = 0;
 	if (!performance_blocksave) {
 		int rt_code, rt_code2;
+		struct pollfd fds;
+		int nfds = 1;
 		rt_code = fcntl(socket, F_GETFL, 0);
 		rt_code2 = fcntl(socket, F_SETFL, rt_code | O_NONBLOCK);
 
-		fd_set set;
 		int ret = 0;
-		struct timeval timeout;
-		timeout.tv_sec = 0;
-		timeout.tv_usec = 100000;
-		FD_ZERO(&set);
-		FD_SET(socket, &set);
+		int timeout = 100;
+
+		fds.fd = socket;
+		fds.events = POLLOUT;
 
 		if ((ret = connect(socket, (struct sockaddr *) addr, length)) == -1) {
 			if ( errno != EINPROGRESS)
@@ -2146,7 +2146,7 @@ static int own_connect(int socket, struct sockaddr *addr, socklen_t length) {
 		} else {
 			return ret;
 		}
-		ret = select(socket + 1, NULL, &set, NULL, &timeout);
+		ret = poll(&fds, nfds, timeout);
 		return (ret > 0) ? ret : -1;
 	} else {
 		return connect(socket, (struct sockaddr *) addr, length);
