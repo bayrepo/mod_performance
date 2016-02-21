@@ -2425,7 +2425,7 @@ static int performance_module_handler(request_rec * r) {
 		apr_threadkey_private_set((void *) sd, key);
 		sd_global = sd;
 
-		performance_module_send_req *req = apr_palloc(r->pool,
+		performance_module_send_req *req = apr_pcalloc(r->pool,
 				sizeof(performance_module_send_req));
 
 		modperformance_sendbegin_info_send_info(req, r->uri, r->filename,
@@ -2519,7 +2519,7 @@ static int performance_module_leave_handler(request_rec * r) {
 			r->handler ? r->handler : "NULL", getpid(), gettid(), sd);
 	if (sd) {
 
-		performance_module_send_req *req = apr_palloc(r->pool,
+		performance_module_send_req *req = apr_pcalloc(r->pool,
 				sizeof(performance_module_send_req));
 
 		modperformance_sendend_info_send_info(req, r->uri,

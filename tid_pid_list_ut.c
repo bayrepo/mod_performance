@@ -405,8 +405,9 @@ void proceed_tid_pid_ut(func_T_ut func, apr_pool_t *pool) {
 		func((pid_t *)&s->tid_pid, s, pool);
 	}
 
-	apr_thread_mutex_unlock(mutex_tid_ut);
 	remove_tid_bad_from_list_ut();
+
+	apr_thread_mutex_unlock(mutex_tid_ut);
 	remove_tid_bad_list_ut();
 }
 

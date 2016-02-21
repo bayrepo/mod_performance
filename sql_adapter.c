@@ -41,8 +41,11 @@
 #include "http_config.h"
 #include <http_log.h>
 #include "http_protocol.h"
+#include <pthread.h>
 
 #include "custom_report.h"
+
+pthread_rwlock_t db_lock_rw = PTHREAD_RWLOCK_INITIALIZER;
 
 extern int performance_history;
 
@@ -313,6 +316,7 @@ static apr_status_t sql_adapter_cleanup_libhandler(void *dummy) {
 }
 
 static apr_status_t sql_adapter_cleanup_close_mysql(void *dummy) {
+	pthread_rwlock_wrlock(&db_lock_rw);
 	if (m_db != NULL) {
 		(*_mysql_close)(m_db);
 		m_db = NULL;
@@ -321,10 +325,12 @@ static apr_status_t sql_adapter_cleanup_close_mysql(void *dummy) {
 		(*_mysql_close)(m_db_r);
 		m_db_r = NULL;
 	}
+	pthread_rwlock_unlock(&db_lock_rw);
 	return APR_SUCCESS;
 }
 
 static apr_status_t sql_adapter_cleanup_close_sqlite(void *dummy) {
+	pthread_rwlock_wrlock(&db_lock_rw);
 	if (s_db != NULL) {
 		(*_sqlite3_close)(s_db);
 		s_db = NULL;
@@ -333,10 +339,12 @@ static apr_status_t sql_adapter_cleanup_close_sqlite(void *dummy) {
 		(*_sqlite3_close)(s_db_r);
 		s_db_r = NULL;
 	}
+	pthread_rwlock_unlock(&db_lock_rw);
 	return APR_SUCCESS;
 }
 
 static apr_status_t sql_adapter_cleanup_close_postgres(void *dummy) {
+	pthread_rwlock_wrlock(&db_lock_rw);
 	if (p_db != NULL) {
 		(*_PQfinish)(p_db);
 		p_db = NULL;
@@ -345,6 +353,7 @@ static apr_status_t sql_adapter_cleanup_close_postgres(void *dummy) {
 		(*_PQfinish)(p_db_r);
 		p_db_r = NULL;
 	}
+	pthread_rwlock_unlock(&db_lock_rw);
 	return APR_SUCCESS;
 }
 
@@ -440,15 +449,24 @@ int sql_adapter_load_library(apr_pool_t * p, int db_type) {
 #define mysql_reconnect(x) if(smysql_reconnect(&x)<0) x=0
 
 static int smysql_reconnect(MYSQL ** ptr) {
+	pthread_rwlock_rdlock(&db_lock_rw);
 	if (ptr && *ptr ) {
 		if ((*_mysql_ping)(*ptr)) {
+			pthread_rwlock_unlock(&db_lock_rw);
+			pthread_rwlock_wrlock(&db_lock_rw);
 			(*_mysql_options)(*ptr, MYSQL_OPT_RECONNECT, &reconnect);
 			if (!(*_mysql_real_connect)(*ptr, performance_dbhost,
 					performance_username, performance_password,
 					performance_dbname, 0, NULL, 0)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return -1;
 			}
+			pthread_rwlock_unlock(&db_lock_rw);
+		} else {
+			pthread_rwlock_unlock(&db_lock_rw);
 		}
+	} else {
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 	return 0;
 }
@@ -457,20 +475,30 @@ static int smysql_reconnect(MYSQL ** ptr) {
 
 static int spgsql_reconnect(PGconn ** ptr) {
 	PGresult *result = NULL;
+	pthread_rwlock_rdlock(&db_lock_rw);
 	if (ptr && *ptr && pgsql_conn_str[0]) {
 		if ((result = (*_PQexec)(*ptr, "")) == NULL) {
 			(*_PQfinish)(*ptr);
+			pthread_rwlock_unlock(&db_lock_rw);
+			pthread_rwlock_wrlock(&db_lock_rw);
 			*ptr = (*_PQconnectdb)(pgsql_conn_str);
 			if (!*ptr) {
 				(*_PQfinish)(*ptr);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return -1;
 			}
 			if ((*_PQstatus)(p_db_r) != CONNECTION_OK) {
 				(*_PQfinish)(*ptr);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return -1;
 			}
+			pthread_rwlock_unlock(&db_lock_rw);
+		} else {
+			pthread_rwlock_unlock(&db_lock_rw);
 		}
 		PQClear(result);
+	} else {
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 	return 0;
 }
@@ -502,17 +530,22 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 	performance_dbname = dbname ? apr_pstrdup(p, dbname) : NULL;
 	;
 	performance_dbhost = host ? apr_pstrdup(p, host) : NULL;
+	pthread_rwlock_wrlock(&db_lock_rw);
 
 	switch (db_type) {
 	case 1:
 		//SqLite
 	{
 		int rc = (*_sqlite3_open)(path, &s_db);
-		if (rc)
+		if (rc) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
+		}
 		rc = (*_sqlite3_open)(path, &s_db_r);
-		if (rc)
+		if (rc) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
+		}
 		apr_pool_cleanup_register(p, NULL, sql_adapter_cleanup_close_sqlite,
 				apr_pool_cleanup_null);
 	}
@@ -522,23 +555,28 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 	{
 		(*_my_init)();
 		m_db = (*_mysql_init)(NULL);
-		if (!m_db)
+		if (!m_db) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
+		}
 		(*_mysql_options)(m_db, MYSQL_OPT_RECONNECT, &reconnect);
 		if (!(*_mysql_real_connect)(m_db, host, username, password, dbname, 0,
 				NULL, 0)) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
 		}
 
 		m_db_r = (*_mysql_init)(NULL);
 		if (!m_db_r) {
 			(*_mysql_close)(m_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
 		}
 		(*_mysql_options)(m_db_r, MYSQL_OPT_RECONNECT, &reconnect);
 		if (!(*_mysql_real_connect)(m_db_r, host, username, password, dbname, 0,
 				NULL, 0)) {
 			(*_mysql_close)(m_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
 		}
 
@@ -576,20 +614,25 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 					dbname, username, password, port_only);
 		strncpy(pgsql_conn_str, connect_string, PGSQL_CON_STRING);
 		p_db = (*_PQconnectdb)(connect_string);
-		if (!p_db)
+		if (!p_db) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
+		}
 		if ((*_PQstatus)(p_db) != CONNECTION_OK) {
 			(*_PQfinish)(p_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
 		}
 		p_db_r = (*_PQconnectdb)(connect_string);
 		if (!p_db_r) {
 			(*_PQfinish)(p_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
 		}
 		if ((*_PQstatus)(p_db_r) != CONNECTION_OK) {
 			(*_PQfinish)(p_db);
 			(*_PQfinish)(p_db_r);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return -1;
 		}
 
@@ -598,6 +641,7 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 	}
 		break;
 	}
+	pthread_rwlock_unlock(&db_lock_rw);
 	return 0;
 }
 
@@ -634,13 +678,16 @@ sql_adapter_get_create_table(apr_pool_t * p, int db_type,
 					apr_pstrdup(
 							p,
 							"CREATE TABLE IF NOT EXISTS performance(id INT NOT NULL AUTO_INCREMENT, dateadd DATETIME, host VARCHAR(255), uri VARCHAR(512), script VARCHAR(512), cpu FLOAT(15,5), memory FLOAT(15,5), exc_time FLOAT(15,5), cpu_sec FLOAT(15,5), memory_mb FLOAT(15,5), bytes_read FLOAT(15,5), bytes_write FLOAT(15,5), hostnm CHAR(32), PRIMARY KEY(id))");
+			pthread_rwlock_rdlock(&db_lock_rw);
 			apr_thread_mutex_lock(mutex_db);
 			if ((*_mysql_query)(m_db, sql_buffer)) {
 				char *errmsg = apr_pstrdup(p, (*_mysql_error)(m_db));
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return NULL;
 		}
 	}
@@ -660,22 +707,26 @@ sql_adapter_get_create_table(apr_pool_t * p, int db_type,
 							p,
 							"create table performance(id SERIAL, dateadd timestamp, host varchar(255), uri varchar(512), script varchar(512), cpu float(4), memory float(4), exc_time float(4), cpu_sec float(4), memory_mb float(4), bytes_read float(4), bytes_write float(4), hostnm char(32), PRIMARY KEY(id))");
 
+			pthread_rwlock_rdlock(&db_lock_rw);
 			apr_thread_mutex_lock(mutex_db);
 			if ((result = (*_PQexec)(p_db, sql_buffer)) == NULL) {
 				char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			if ((*_PQresultStatus)(result) != PGRES_TUPLES_OK) {
 				char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 				PQClear(result);
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			if ((*_PQntuples)(result) != 1) {
 				char *errmsg = apr_pstrdup(p, "Strange count value");
 				PQClear(result);
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			int cnt = (int) apr_atoi64((*_PQgetvalue)(result, 0, 0));
@@ -684,17 +735,20 @@ sql_adapter_get_create_table(apr_pool_t * p, int db_type,
 				if ((result = (*_PQexec)(p_db, sql_buffer2)) == NULL) {
 					char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 					apr_thread_mutex_unlock(mutex_db);
+					pthread_rwlock_unlock(&db_lock_rw);
 					return errmsg;
 				}
 				if ((*_PQresultStatus)(result) != PGRES_COMMAND_OK) {
 					char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 					PQClear(result);
 					apr_thread_mutex_unlock(mutex_db);
+					pthread_rwlock_unlock(&db_lock_rw);
 					return errmsg;
 				}
 				PQClear(result);
 			}
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return NULL;
 		}
 	}
@@ -800,13 +854,16 @@ sql_adapter_get_insert_table(apr_pool_t * p, int db_type, char *hostname,
 							inner_hostname_q, inner_uri_q, inner_script_q, dcpu,
 							dmemory, dtime, dcpu_sec, dmemory_mb, dbr, dbw,
 							inner_host_name);
+			pthread_rwlock_rdlock(&db_lock_rw);
 			apr_thread_mutex_lock(mutex_db);
 			if ((*_mysql_query)(m_db, sql_buffer)) {
 				apr_thread_mutex_unlock(mutex_db);
 				char *errmsg = apr_pstrdup(p, (*_mysql_error)(m_db));
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return NULL;
 		}
 	}
@@ -836,19 +893,24 @@ sql_adapter_get_insert_table(apr_pool_t * p, int db_type, char *hostname,
 							inner_hostname_q, inner_uri_q, inner_script_q, dcpu,
 							dmemory, dtime, dcpu_sec, dmemory_mb, dbr, dbw,
 							inner_host_name);
+			pthread_rwlock_rdlock(&db_lock_rw);
 			apr_thread_mutex_lock(mutex_db);
 			if ((result = (*_PQexec)(p_db, sql_buffer)) == NULL) {
 				apr_thread_mutex_unlock(mutex_db);
 				char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			if ((*_PQresultStatus)(result) != PGRES_COMMAND_OK) {
 				apr_thread_mutex_unlock(mutex_db);
 				char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 				PQClear(result);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
-			}PQClear(result);
+			}
+			PQClear(result);
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 
 			return NULL;
 		}
@@ -896,13 +958,16 @@ sql_adapter_get_delete_table(apr_pool_t * p, int db_type, int days,
 							p,
 							"delete from performance where FROM_DAYS(TO_DAYS(dateadd)) < FROM_DAYS(TO_DAYS(now())-%d)",
 							days);
+			pthread_rwlock_rdlock(&db_lock_rw);
 			apr_thread_mutex_lock(mutex_db);
 			if ((*_mysql_query)(m_db, sql_buffer)) {
 				apr_thread_mutex_unlock(mutex_db);
 				char *errmsg = apr_pstrdup(p, (*_mysql_error)(m_db));
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return NULL;
 		}
 	}
@@ -919,20 +984,24 @@ sql_adapter_get_delete_table(apr_pool_t * p, int db_type, int days,
 							p,
 							"delete from performance where date(dateadd)<(date(now())-integer '%d')",
 							days);
+			pthread_rwlock_rdlock(&db_lock_rw);
 			apr_thread_mutex_lock(mutex_db);
 			if ((result = (*_PQexec)(p_db, sql_buffer)) == NULL) {
 
 				char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			if ((*_PQresultStatus)(result) != PGRES_COMMAND_OK) {
 				char *errmsg = apr_pstrdup(p, (*_PQerrorMessage)(p_db));
 				PQClear(result);
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}PQClear(result);
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 
 			return NULL;
 		}
@@ -1233,8 +1302,10 @@ sql_adapter_get_full_text_info(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1246,6 +1317,7 @@ sql_adapter_get_full_text_info(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1253,8 +1325,10 @@ sql_adapter_get_full_text_info(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1271,10 +1345,12 @@ sql_adapter_get_full_text_info(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -1326,8 +1402,10 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1338,6 +1416,7 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1345,8 +1424,10 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1357,10 +1438,12 @@ sql_adapter_get_full_text_info_count(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -1451,8 +1534,10 @@ sql_adapter_get_full_text_info_picture(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1464,6 +1549,7 @@ sql_adapter_get_full_text_info_picture(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1471,8 +1557,10 @@ sql_adapter_get_full_text_info_picture(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1487,10 +1575,12 @@ sql_adapter_get_full_text_info_picture(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -1579,8 +1669,10 @@ sql_adapter_get_cpu_max_text_info(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1592,6 +1684,7 @@ sql_adapter_get_cpu_max_text_info(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1599,8 +1692,10 @@ sql_adapter_get_cpu_max_text_info(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1617,10 +1712,12 @@ sql_adapter_get_cpu_max_text_info(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -1700,8 +1797,10 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);;
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1713,6 +1812,7 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1720,8 +1820,10 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1738,10 +1840,12 @@ sql_adapter_get_cpu_max_text_info_no_hard(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);;
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -1828,8 +1932,10 @@ sql_adapter_get_mem_max_text_info(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1841,6 +1947,7 @@ sql_adapter_get_mem_max_text_info(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1848,8 +1955,10 @@ sql_adapter_get_mem_max_text_info(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_unlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1866,10 +1975,12 @@ sql_adapter_get_mem_max_text_info(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -1949,8 +2060,10 @@ sql_adapter_get_mem_max_text_info_no_hard(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -1962,6 +2075,7 @@ sql_adapter_get_mem_max_text_info_no_hard(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -1969,8 +2083,10 @@ sql_adapter_get_mem_max_text_info_no_hard(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -1987,10 +2103,12 @@ sql_adapter_get_mem_max_text_info_no_hard(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2077,8 +2195,10 @@ sql_adapter_get_time_max_text_info(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2090,6 +2210,7 @@ sql_adapter_get_time_max_text_info(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2097,8 +2218,10 @@ sql_adapter_get_time_max_text_info(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2115,10 +2238,12 @@ sql_adapter_get_time_max_text_info(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2198,8 +2323,10 @@ sql_adapter_get_time_max_text_info_no_hard(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2211,6 +2338,7 @@ sql_adapter_get_time_max_text_info_no_hard(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2218,8 +2346,10 @@ sql_adapter_get_time_max_text_info_no_hard(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2236,10 +2366,12 @@ sql_adapter_get_time_max_text_info_no_hard(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2305,8 +2437,10 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2316,6 +2450,7 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2323,8 +2458,10 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2337,10 +2474,12 @@ sql_adapter_get_host_text_info(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2406,8 +2545,10 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2417,6 +2558,7 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2424,8 +2566,10 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2437,10 +2581,12 @@ sql_adapter_get_host_text_info_picture(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2517,8 +2663,10 @@ sql_adapter_get_avg_text_info(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2529,6 +2677,7 @@ sql_adapter_get_avg_text_info(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2536,8 +2685,10 @@ sql_adapter_get_avg_text_info(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2551,10 +2702,12 @@ sql_adapter_get_avg_text_info(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2630,8 +2783,10 @@ sql_adapter_get_avg_text_info_picture(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2642,6 +2797,7 @@ sql_adapter_get_avg_text_info_picture(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2649,8 +2805,10 @@ sql_adapter_get_avg_text_info_picture(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2664,10 +2822,12 @@ sql_adapter_get_avg_text_info_picture(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2682,6 +2842,7 @@ sql_adapter_optimize_table(apr_pool_t * p, int db_type,
 		//MySQL
 	{
 		mysql_reconnect(m_db);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db) {
 			char *sql_buffer;
 			sql_buffer = apr_psprintf(p, "OPTIMIZE TABLE performance");
@@ -2689,11 +2850,14 @@ sql_adapter_optimize_table(apr_pool_t * p, int db_type,
 			if ((*_mysql_query)(m_db, sql_buffer)) {
 				char *errmsg = apr_pstrdup(p, (*_mysql_error)(m_db));
 				apr_thread_mutex_unlock(mutex_db);
+				pthread_rwlock_unlock(&db_lock_rw);
 				return errmsg;
 			}
 			apr_thread_mutex_unlock(mutex_db);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return NULL;
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2769,8 +2933,10 @@ sql_adapter_get_exec_tm(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2781,6 +2947,7 @@ sql_adapter_get_exec_tm(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2788,8 +2955,10 @@ sql_adapter_get_exec_tm(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2805,10 +2974,12 @@ sql_adapter_get_exec_tm(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2883,8 +3054,10 @@ sql_adapter_get_exec_tm_common(
 		//MySQL
 	{
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -2895,6 +3068,7 @@ sql_adapter_get_exec_tm_common(
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -2902,8 +3076,10 @@ sql_adapter_get_exec_tm_common(
 	{
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -2919,10 +3095,12 @@ sql_adapter_get_exec_tm_common(
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
@@ -2992,8 +3170,10 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 						db_type, NULL),
 						apr_pstrcat(p," 1=1 ", sql_adapter_get_filter(p, host, script, uri, db_type, NULL),NULL));
 		mysql_reconnect(m_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if (m_db_r) {
 			if ((*_mysql_query)(m_db_r, string_sql)) {
+				pthread_rwlock_unlock(&db_lock_rw);
 				return get_error_description(m_db_r, string_sql, p, db_type);
 			}
 			MYSQL_RES *result = (*_mysql_store_result)(m_db_r);
@@ -3008,6 +3188,7 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 			}
 			(*_mysql_free_result)(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	case 3:
@@ -3023,8 +3204,10 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 						apr_pstrcat(p," 1=1 ", sql_adapter_get_filter(p, host, script, uri, db_type, NULL),NULL));
 		PGresult *result;
 		pgsql_reconnect(p_db_r);
+		pthread_rwlock_rdlock(&db_lock_rw);
 		if(p_db_r){
 		if ((result = (*_PQexec)(p_db_r, string_sql)) == NULL) {
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		if ((*_PQresultStatus)(result) == PGRES_TUPLES_OK) {
@@ -3040,10 +3223,12 @@ sql_adapter_get_custom_text_info(apr_pool_t * p, int db_type, void *r,
 			}
 		} else {
 			PQClear(result);
+			pthread_rwlock_unlock(&db_lock_rw);
 			return get_error_description(p_db_r, string_sql, p, db_type);
 		}
 		PQClear(result);
 		}
+		pthread_rwlock_unlock(&db_lock_rw);
 	}
 		break;
 	}
