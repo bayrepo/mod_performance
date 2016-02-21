@@ -612,7 +612,7 @@ int sql_adapter_connect_db(apr_pool_t * p, int db_type, char *host,
 			connect_string = apr_psprintf(p,
 					"host=%s dbname=%s user=%s password=%s port=%s", host_only,
 					dbname, username, password, port_only);
-		strncpy(pgsql_conn_str, connect_string, PGSQL_CON_STRING);
+		strncpy(pgsql_conn_str, connect_string, PGSQL_CON_STRING-1);
 		p_db = (*_PQconnectdb)(connect_string);
 		if (!p_db) {
 			pthread_rwlock_unlock(&db_lock_rw);
