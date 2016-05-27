@@ -83,10 +83,35 @@ endif
 ##Check for FreeBSD
 ifeq "$(UNAME)" "FreeBSD"
 
+#   additional defines, includes and libraries
+DEFS=$(APVER)
+#get apache version
+ifeq "$(APVER)" ""
+APVER20 := $(shell apachectl -v | grep apache/2.0 -i)
+APVER24 := $(shell apachectl -v | grep apache/2.4 -i)
+ifneq "$(APVER20)" ""
+DEFS=-DAPACHE2_0
+endif
+ifneq "$(APVER24)" ""
+DEFS=-DAPACHE2_4
+endif
+endif
+
+DEFS := $(DEFS) -Wall
+
+
 builddir=.
+ifneq "$(APVER20)" ""
 top_srcdir=/usr/local/share/apache22
 top_builddir=/usr/local/share/apache22
 include /usr/local/share/apache22/build/special.mk
+endif
+
+ifneq "$(APVER24)" ""
+top_srcdir=/usr/local/share/apache24
+top_builddir=/usr/local/share/apache24
+include /usr/local/share/apache24/build/special.mk
+endif
 
 #   the used tools
 APXS=apxs
@@ -101,16 +126,27 @@ LIBS=-L/usr/$(BLIB) -L/usr/local/$(BLIB) -lgd -lkvm -lm -lrt
 
 endif
 
+ifneq "$(APVER24)" ""
+DEFS=-DAPACHE2_4
+endif
 
 #   the default target
 all: local-shared-build libr
 
 libr:
-	gcc -c send_info.c -Wall -Werror -fpic -o send_info.cc.o -D_LIBBUILD
-	gcc -c iostat.c -Wall -Werror -fpic -o iostat.cc.o -D_LIBBUILD
-	gcc -c freebsd_getsysinfo.c -Wall -Werror -fpic -o freebsd_getsysinfo.cc.o -D_LIBBUILD
-	gcc -c lib-functions.c -Wall -Werror -fpic -D_LIBBUILD
-	gcc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o
+ifeq "$(UNAME)" "FreeBSD"
+        cc -c send_info.c -Wall -Werror -fpic -o send_info.cc.o -D_LIBBUILD
+        cc -c iostat.c -Wall -Werror -fpic -o iostat.cc.o -D_LIBBUILD
+        cc -c freebsd_getsysinfo.c -Wall -Werror -fpic -o freebsd_getsysinfo.cc.o -D_LIBBUILD
+        cc -c lib-functions.c -Wall -Werror -fpic -D_LIBBUILD
+        cc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o
+else
+        gcc -c send_info.c -Wall -Werror -fpic -o send_info.cc.o -D_LIBBUILD
+        gcc -c iostat.c -Wall -Werror -fpic -o iostat.cc.o -D_LIBBUILD
+        gcc -c freebsd_getsysinfo.c -Wall -Werror -fpic -o freebsd_getsysinfo.cc.o -D_LIBBUILD
+        gcc -c lib-functions.c -Wall -Werror -fpic -D_LIBBUILD
+        gcc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o
+endif
 
 #   install the shared object file into Apache 
 install: install-modules-yes

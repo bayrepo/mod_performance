@@ -29,8 +29,8 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include <apr_general.h>
-#include <apr_pools.h>
+//#include <apr_general.h>
+//#include <apr_pools.h>
 
 #include <kvm.h>
 #include <paths.h>
@@ -47,6 +47,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <string.h>
 
 
 #include "freebsd_getsysinfo.h"
@@ -94,7 +95,6 @@ int
 init_freebsd_info (void)
 {
   size_t oldlen;
-  size_t size;
 
   oldlen = sizeof (ccpu);
   if (sysctlbyname ("kern.ccpu", &ccpu, &oldlen, NULL, 0) == -1)

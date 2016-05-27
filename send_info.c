@@ -44,6 +44,8 @@
 #endif
 #if defined(__FreeBSD__)
 #include <unistd.h>
+#include <pthread_np.h>
+#include <string.h>
 #endif
 #include <errno.h>
 #include <math.h>
