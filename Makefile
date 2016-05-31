@@ -88,6 +88,7 @@ DEFS=$(APVER)
 #get apache version
 ifeq "$(APVER)" ""
 APVER20 := $(shell apachectl -v | grep apache/2.0 -i)
+APVER22 := $(shell apachectl -v | grep apache/2.2 -i)
 APVER24 := $(shell apachectl -v | grep apache/2.4 -i)
 ifneq "$(APVER20)" ""
 DEFS=-DAPACHE2_0
@@ -102,6 +103,12 @@ DEFS := $(DEFS) -Wall
 
 builddir=.
 ifneq "$(APVER20)" ""
+top_srcdir=/usr/local/share/apache22
+top_builddir=/usr/local/share/apache22
+include /usr/local/share/apache22/build/special.mk
+endif
+
+ifneq "$(APVER22)" ""
 top_srcdir=/usr/local/share/apache22
 top_builddir=/usr/local/share/apache22
 include /usr/local/share/apache22/build/special.mk
