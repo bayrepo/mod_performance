@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 13%{?dist}
+Release: 14%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -53,6 +53,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libmodperformance.so.0.4
 
 %changelog
+* Wed Jun 14 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-14
+- Fix segfault
+
 * Sun Feb 21 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-13
 - Added some mutexes for preventig raice conditions
 

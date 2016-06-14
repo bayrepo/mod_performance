@@ -254,6 +254,7 @@ static int registered_filter = 0;
 apr_thread_mutex_t *mutex_db = NULL;
 
 static __thread intptr_t sd_global = 0;
+static __thread int filter_used = 0;
 
 unsigned long long glbHtz;
 
@@ -1316,12 +1317,7 @@ void performance_module_save_to_db(double req_time, apr_pool_t *pool,
 	}
 
 	performance_module_cfg *cfg = NULL;
-	if (req_server) {
-		cfg = ap_get_module_config(req_server->module_config,
-				&performance_module);
-	} else {
-		cfg = ap_get_module_config(server->module_config, &performance_module);
-	}
+	cfg = ap_get_module_config(server->module_config, &performance_module);
 
 	float check_min_script;
 	int need_to_write = 1;
@@ -2459,10 +2455,27 @@ static int performance_module_handler(request_rec * r) {
 static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 		apr_bucket_brigade *in) {
 	request_rec * r = f->r;
+	apr_status_t status_tmp;
 	intptr_t sd = sd_global;
+
+	filter_used = 1;
+
+	if (!registered_filter){
+		ap_remove_output_filter(f);
+		return ap_pass_brigade(f->next, in);
+	}
 
 	write_debug_info("Proceed handler %s - PID %d, TID %d End cicle FD %d",
 			r->handler ? r->handler : "NULL", getpid(), gettid(), sd);
+
+    int found_eos_result = (!APR_BRIGADE_EMPTY(in) && APR_BUCKET_IS_EOS(APR_BRIGADE_LAST(in)));
+    status_tmp = ap_pass_brigade(f->next, in);
+    if (status_tmp == APR_SUCCESS) {
+      if (!found_eos_result) {
+        return status_tmp;
+      }
+    }
+
 	if (sd) {
 
 		performance_module_send_req *req = apr_palloc(r->pool,
@@ -2509,7 +2522,8 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 static int performance_module_leave_handler(request_rec * r) {
 	intptr_t sd;
 
-	if(registered_filter) {
+	if(registered_filter && filter_used) {
+		  filter_used = 0;
 	      return DECLINED;
 	}
 
