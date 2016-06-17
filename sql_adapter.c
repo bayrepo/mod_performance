@@ -153,7 +153,6 @@ typedef int (*sqlite3_callback)(void *, int, char **, char **);
 #define M_sqlite3_reset int (*_sqlite3_reset)(sqlite3_stmt *pStmt)
 #define M_sqlite3_column_int int (*_sqlite3_column_int)(sqlite3_stmt*, int iCol)
 #define M_sqlite3_column_double double (*_sqlite3_column_double)(sqlite3_stmt*, int iCol)
-#define M_sqlite3_errstr const char * (*_sqlite3_errstr)(int)
 #define M_sqlite3_errmsg const char * (*_sqlite3_errmsg)(sqlite3 *)
 
 M_sqlite3_exec = NULL;
@@ -168,7 +167,6 @@ M_sqlite3_column_text = NULL;
 M_sqlite3_reset = NULL;
 M_sqlite3_column_int = NULL;
 M_sqlite3_column_double = NULL;
-M_sqlite3_errstr = NULL;
 M_sqlite3_errmsg = NULL;
 
 #define SQLITE_OK           0	/* Successful result */
@@ -381,7 +379,6 @@ int sql_adapter_load_library(apr_pool_t * p, int db_type) {
 			LOAD_FUNCTION(sqlite3_reset);
 			LOAD_FUNCTION(sqlite3_column_int);
 			LOAD_FUNCTION(sqlite3_column_double);
-			LOAD_FUNCTION(sqlite3_errstr);
 			LOAD_FUNCTION(sqlite3_errmsg);
 			break;
 		case 2:

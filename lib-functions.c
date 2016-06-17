@@ -64,8 +64,6 @@
 #include "lib-functions.h"
 #include "send_info.h"
 
-__thread int global_sd = -1;
-
 static int performance_send_data_to_inner(int fd, const void *buf,
 		size_t buf_size) {
 	int rc;
@@ -99,7 +97,7 @@ static int connect_to_daemon_inner(int * sdptr, char *socket_path) {
 
 int modperformance_sendbegin_info(char *socket_path, char *uri, char *path,
 		char *hostname, char *method, char *args) {
-	global_sd = -1;
+	int global_sd = -1;
 
 	if (global_sd < 0) {
 		if (connect_to_daemon_inner(&global_sd, socket_path) != 0) {
@@ -127,9 +125,9 @@ int modperformance_sendbegin_info(char *socket_path, char *uri, char *path,
 	return global_sd;
 }
 
-void modperformance_sendend_info(int *modperformance_sd) {
+void modperformance_sendend_info(int modperformance_sd) {
 
-	int *sd = modperformance_sd ? modperformance_sd : (int *) &global_sd;
+	int sd = &modperformance_sd;
 	if (*sd) {
 		//double time_start2;
 		//struct timeval tm;

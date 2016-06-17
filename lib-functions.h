@@ -36,6 +36,6 @@
 
 int modperformance_sendbegin_info(char *socket_path, char *uri, char *path,
 		char *hostname, char *method, char *args);
-void modperformance_sendend_info(int *modperformance_sd);
+void modperformance_sendend_info(int modperformance_sd);
 
 #endif /* LIB_FUNCTIONS_H_ */
