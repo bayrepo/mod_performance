@@ -127,8 +127,7 @@ int modperformance_sendbegin_info(char *socket_path, char *uri, char *path,
 
 void modperformance_sendend_info(int modperformance_sd) {
 
-	int sd = &modperformance_sd;
-	if (*sd) {
+	if (modperformance_sd) {
 		//double time_start2;
 		//struct timeval tm;
 		//gettimeofday(&tm, NULL);
@@ -143,12 +142,12 @@ void modperformance_sendend_info(int modperformance_sd) {
 					"", "", "", "", 0,
 					NULL, NULL);
 
-			performance_send_data_to_inner(*sd, (const void *) req,
+			performance_send_data_to_inner(modperformance_sd, (const void *) req,
 					sizeof(performance_module_send_req));
 			free(req);
 		}
-		shutdown(*sd, SHUT_RDWR);
-		close(*sd);
+		shutdown(modperformance_sd, SHUT_RDWR);
+		close(modperformance_sd);
 
 	}
 }
