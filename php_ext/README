@@ -1,0 +1,12 @@
+./ext_skel --extname='modperf_ext' --proto=./modperf_ext.def --skel=/home/alexey/tmp/php/php-5.4.45/ext/skeleton
+
+To use your new extension, you will have to execute the following steps:
+
+1.  $ cd ..
+2.  $ vi ext/modperf_ext/config.m4
+3.  $ ./buildconf
+4.  $ ./configure --[with|enable]-modperf_ext
+5.  $ make
+6.  $ ./sapi/cli/php -f ext/modperf_ext/modperf_ext.php
+7.  $ vi ext/modperf_ext/modperf_ext.c
+8.  $ make

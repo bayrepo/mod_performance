@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 14%{?dist}
+Release: 15%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -11,10 +11,12 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: httpd-devel
 BuildRequires: apr-devel                                                                                                                                                                                                                                                                                                                                                                                                                                                 
 BuildRequires: gd-devel 
+BuildRequires: php-devel
 
 Requires: httpd
 Requires: apr
 Requires: gd
+Requires: php-common
 
 %description
 This package contains Apache module
@@ -24,17 +26,23 @@ This package contains Apache module
 
 %build
 make
+make phpext
 
 %install
 mkdir -p $RPM_BUILD_ROOT/opt/performance
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.d/
 mkdir -p $RPM_BUILD_ROOT%{_libdir}/
+mkdir -p $RPM_BUILD_ROOT%{_libdir}/php/modules/
 mkdir -p $RPM_BUILD_ROOT/opt/lexvit/mod_performance04
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/php.d
 install -m 644 -D mod_performance.conf $RPM_BUILD_ROOT/%{_sysconfdir}/httpd/conf.d/
-install -m 755 -D .libs/mod_performance.so  $RPM_BUILD_ROOT/opt/lexvit/mod_performance04/
+install -m 755 -D .libs/mod_performance.so $RPM_BUILD_ROOT/opt/lexvit/mod_performance04/
 install -m 644 -D custom.tpl $RPM_BUILD_ROOT/opt/performance/
 install -D -m 755 libmodperformance.so.0.4 $RPM_BUILD_ROOT%{_libdir}/libmodperformance.so.0.4
 cp libmodperformance.so $RPM_BUILD_ROOT%{_libdir}/libmodperformance.so
+install -m 644 -D php_ext/modperf_ext.ini $RPM_BUILD_ROOT/%{_sysconfdir}/php.d/
+install -m 755 -D php_ext/modperf_ext/.libs/modperf_ext.so $RPM_BUILD_ROOT%{_libdir}/php/modules/
+
 
 %posttrans
 ldconfig
@@ -51,9 +59,15 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) /opt/performance/custom.tpl
 %{_libdir}/libmodperformance.so
 %{_libdir}/libmodperformance.so.0.4
+%{_libdir}/php/modules/modperf_ext.so
+%config(noreplace) %{_sysconfdir}/php.d/modperf_ext.ini
+
 
 %changelog
-* Wed Jun 14 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-14
+* Sun Jun 19 2016 Alexey Berezhok <bayrepo.info@gmail.com> 0.4-15
+- Added php extension instead of patching php for support (php-fpm, suphp, fastcgi)
+
+* Tue Jun 14 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-14
 - Fix segfault
 
 * Sun Feb 21 2016 Alexey Berezhok <alexey_com@ukr.net> 0.4-13

@@ -155,12 +155,21 @@ else
 	gcc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o
 endif
 
+phpext:
+	cd php_ext/modperf_ext; \
+	phpize; \
+	./configure --enable-modperf_ext; \
+	make;
+
 #   install the shared object file into Apache 
 install: install-modules-yes
 
 #   cleanup
 clean:
 	rm -f mod_performance.o mod_performance.lo mod_performance.slo mod_performance.la 
+	cd php_ext/modperf_ext
+	make clean
+	cd -
 
 #   simple test
 test: reload

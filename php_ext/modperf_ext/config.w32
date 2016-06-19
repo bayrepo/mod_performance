@@ -1,0 +1,13 @@
+// $Id$
+// vim:ft=javascript
+
+// If your extension references something external, use ARG_WITH
+// ARG_WITH("modperf_ext", "for modperf_ext support", "no");
+
+// Otherwise, use ARG_ENABLE
+// ARG_ENABLE("modperf_ext", "enable modperf_ext support", "no");
+
+if (PHP_MODPERF_EXT != "no") {
+	EXTENSION("modperf_ext", "modperf_ext.c");
+}
+
