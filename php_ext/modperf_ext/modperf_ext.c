@@ -14,6 +14,10 @@ ZEND_DECLARE_MODULE_GLOBALS(modperf_ext)
 
 static int le_modperf_ext;
 
+#ifndef PHP_FE_END
+#define PHP_FE_END {NULL, NULL, NULL}
+#endif
+
 /* {{{ modperf_ext_functions[]
  *
  */
