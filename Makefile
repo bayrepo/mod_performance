@@ -167,9 +167,8 @@ install: install-modules-yes
 #   cleanup
 clean:
 	rm -f mod_performance.o mod_performance.lo mod_performance.slo mod_performance.la 
-	cd php_ext/modperf_ext
+	cd php_ext/modperf_ext; \
 	make clean
-	cd -
 
 #   simple test
 test: reload
