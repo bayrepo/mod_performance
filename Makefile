@@ -146,13 +146,13 @@ ifeq "$(UNAME)" "FreeBSD"
 	cc -c iostat.c -Wall -Werror -fpic -o iostat.cc.o -D_LIBBUILD
 	cc -c freebsd_getsysinfo.c -Wall -Werror -fpic -o freebsd_getsysinfo.cc.o -D_LIBBUILD
 	cc -c lib-functions.c -Wall -Werror -fpic -D_LIBBUILD
-	cc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o
+	cc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o $(LIBS)
 else
 	gcc -c send_info.c -Wall -Werror -fpic -o send_info.cc.o -D_LIBBUILD
 	gcc -c iostat.c -Wall -Werror -fpic -o iostat.cc.o -D_LIBBUILD
 	gcc -c freebsd_getsysinfo.c -Wall -Werror -fpic -o freebsd_getsysinfo.cc.o -D_LIBBUILD
 	gcc -c lib-functions.c -Wall -Werror -fpic -D_LIBBUILD
-	gcc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o
+	gcc -shared -o libmodperformance.so.0.4 lib-functions.o send_info.cc.o iostat.cc.o freebsd_getsysinfo.cc.o $(LIBS)
 endif
 
 phpext:

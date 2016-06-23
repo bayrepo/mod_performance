@@ -63,23 +63,31 @@ PHP_INI_END()
 static inline char *_modperf_ext_fetch_global_var(char *name,
 		int name_size TSRMLS_DC) {
 	char *res = NULL;
+
+#if PHP_MAJOR_VERSION < 7
 	zval **tmp;
-
-#if PHP_MAJOR_VERSION >= 5
-        zend_is_auto_global("_SERVER", sizeof("_SERVER") - 1 TSRMLS_CC);
-#endif
-
+    zend_is_auto_global("_SERVER", sizeof("_SERVER") - 1 TSRMLS_CC);
 
 	if (PG(http_globals)[TRACK_VARS_SERVER]
 			&& zend_hash_find(HASH_OF(PG(http_globals)[TRACK_VARS_SERVER]),
 					name, name_size, (void **) &tmp) != FAILURE &&
 			Z_TYPE_PP(tmp) == IS_STRING && Z_STRLEN_PP(tmp) > 0) {
-
 		res = estrdup(Z_STRVAL_PP(tmp));
 	} else {
 		res = estrdup("");
 	}
+#else
+	zval *tmp;
+	if ((Z_TYPE(PG(http_globals)[TRACK_VARS_SERVER]) == IS_ARRAY || zend_is_auto_global_str(ZEND_STRL("_SERVER"))) &&
+				(tmp = zend_hash_str_find(Z_ARRVAL_P(&PG(http_globals)[TRACK_VARS_SERVER]), name, name_size)) == NULL
+			) {
+		res = estrdup("");
+	} else {
+		res = estrdup(Z_STRVAL_P(tmp));
+	}
+#endif
 	return res;
+
 }
 /* }}} */
 
@@ -230,8 +238,11 @@ PHP_FUNCTION(modperf_info) {
 			"<tr>\n<td>STATUS</td><td>%d</td></tr>\n",
 			INI_STR("modperf_ext.socket"), MODPERF_EXT_G(gModPerfEnabled),
 			INI_STR("modperf_ext.libpath"), MODPERF_EXT_G(gModPerfFileDescr));
-
+#if PHP_MAJOR_VERSION < 7
 	RETURN_STRINGL(output_result, len, 0);
+#else
+	RETURN_STRINGL(output_result, len);
+#endif
 
 }
 /* }}} */
