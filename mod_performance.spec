@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 15%{?dist}
+Release: 16%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -64,6 +64,9 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Fri Jun 24 2016 Alexey Berezhok <bayrepo.info@gmail.com> 0.4-16
+- Fix for php7.0 support
+
 * Sun Jun 19 2016 Alexey Berezhok <bayrepo.info@gmail.com> 0.4-15
 - Added php extension instead of patching php for support (php-fpm, suphp, fastcgi)
 
