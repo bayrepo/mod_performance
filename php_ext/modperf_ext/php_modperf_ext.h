@@ -5,7 +5,7 @@
 extern zend_module_entry modperf_ext_module_entry;
 #define phpext_modperf_ext_ptr &modperf_ext_module_entry
 
-#define PHP_MODPERF_EXT_VERSION "0.1.0" /* Replace with version number for your extension */
+#define PHP_MODPERF_EXT_VERSION "0.4.1"
 
 #ifdef PHP_WIN32
 #	define PHP_MODPERF_EXT_API __declspec(dllexport)

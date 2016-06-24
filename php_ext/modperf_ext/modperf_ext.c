@@ -79,7 +79,7 @@ static inline char *_modperf_ext_fetch_global_var(char *name,
 #else
 	zval *tmp;
 	if ((Z_TYPE(PG(http_globals)[TRACK_VARS_SERVER]) == IS_ARRAY || zend_is_auto_global_str(ZEND_STRL("_SERVER"))) &&
-				(tmp = zend_hash_str_find(Z_ARRVAL_P(&PG(http_globals)[TRACK_VARS_SERVER]), name, name_size)) == NULL
+				(tmp = zend_hash_str_find(Z_ARRVAL_P(&PG(http_globals)[TRACK_VARS_SERVER]), name, name_size - 1)) == NULL
 			) {
 		res = estrdup("");
 	} else {
