@@ -98,7 +98,16 @@ DEFS=-DAPACHE2_4
 endif
 endif
 
-DEFS := $(DEFS) -Wall
+REL_F := $(shell uname -r | grep 10.)
+
+SUBREL=-D_FREEBSDXX_
+ifeq "$REL_F" ""
+SUBREL=-D_FREEBSDYY_
+else
+SUBREL=-D_FREEBSD10_
+endif
+
+DEFS := $(DEFS) $(SUBREL) -Wall
 
 
 builddir=.
@@ -133,9 +142,20 @@ LIBS=-L/usr/$(BLIB) -L/usr/local/$(BLIB) -lgd -lkvm -lm -lrt
 
 endif
 
+REL_F := $(shell uname -r | grep 10.)
+
+SUBREL=-D_FREEBSDXX_
+ifeq "$REL_F" ""
+SUBREL=-D_FREEBSDYY_
+else
+SUBREL=-D_FREEBSD10_
+endif
+
 ifneq "$(APVER24)" ""
 DEFS=-DAPACHE2_4
 endif
+
+DEFS:=$(DEFS) $(SUBREL)
 
 #   the default target
 all: local-shared-build libr

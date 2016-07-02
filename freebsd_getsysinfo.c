@@ -168,13 +168,29 @@ get_freebsd_mem_info_ret (freebsd_get_mem * fgm, pid_t pid, pid_t tid)
 void
 get_freebsd_cpu_info (void * p, freebsd_glibtop_cpu * buf)
 {
+#ifdef _FREEBSD10_
+  struct timeval thistime1;
+#else
   int i;
   long cpts[CPUSTATES];
+#endif
+
+  memset (buf, 0, sizeof (freebsd_glibtop_cpu));
+
+#ifdef _FREEBSD10_
+  gettimeofday(&thistime1, 0);
+
+  buf->user = 0;
+  buf->nice = 0;
+  buf->sys = 0;
+  buf->idle = 0;
+  buf->iowait = 0;
+
+  buf->total = thistime1.tv_sec * 1000000 + thistime1.tv_usec;
+#else
   for (i = 0; i < CPUSTATES; i++)
     cpts[i] = 0;
   size_t size = sizeof (cpts);
-  memset (buf, 0, sizeof (freebsd_glibtop_cpu));
-
   if (!sysctlbyname ("kern.cp_time", &cpts, &size, NULL, 0))
     {
       buf->user = cpts[CP_USER] * frglhz;
@@ -186,6 +202,7 @@ get_freebsd_cpu_info (void * p, freebsd_glibtop_cpu * buf)
       buf->total = cpts[CP_USER] * frglhz + cpts[CP_NICE] * frglhz
 	+ cpts[CP_SYS] * frglhz + cpts[CP_IDLE] * frglhz;
     }
+#endif
 
 }
 
