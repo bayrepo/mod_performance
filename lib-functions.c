@@ -99,6 +99,20 @@ int modperformance_sendbegin_info(char *socket_path, char *uri, char *path,
 		char *hostname, char *method, char *args) {
 	int global_sd = -1;
 
+#if defined(__FreeBSD__)
+	if (init_freebsd_info ())
+	{
+		return -1;
+	}
+
+#endif
+
+#if defined(linux)
+	if (glibtop_init_own() < 0) {
+		return -1;
+	}
+#endif
+
 	if (global_sd < 0) {
 		if (connect_to_daemon_inner(&global_sd, socket_path) != 0) {
 			global_sd = -1;
