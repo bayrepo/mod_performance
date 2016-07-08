@@ -1365,11 +1365,11 @@ void performance_module_save_to_db(double req_time, apr_pool_t *pool,
 
 	if (need_to_write) {
 		if (cfg->performance_host_filter_external) {
-			if (cfg->performance_host_filter_external) {
+
 				if (!match_hostname(cfg->performance_host_filter_external,
 						req_begin->hostname))
 					need_to_write = 0;
-			}
+
 
 		}
 	}
