@@ -185,6 +185,7 @@ typedef struct performance_module_cfg {
 	const char *performance_log_format;
 	apr_array_header_t *performance_log_format_parsed;
 	apr_array_header_t *performance_external_handlers;
+	apr_array_header_t *performance_host_filter_external;
 } performance_module_cfg;
 
 #define DAEMON_STARTUP_ERROR 254
@@ -561,6 +562,7 @@ create_performance_module_config(apr_pool_t * p, server_rec * s) {
 
 	c->performance_enabled = 0;
 	c->performance_host_filter = NULL;
+	c->performance_host_filter_external = NULL;
 	c->performance_work_handler = apr_pstrdup(p, DEFAULT_WORK_HANDLER);
 	c->performance_uri = NULL;
 	c->performance_script = NULL;
@@ -586,6 +588,10 @@ merge_performance_module_config(apr_pool_t * p, void *basev, void *overridesv) {
 	}
 	if (!new->performance_host_filter) {
 		new->performance_host_filter = base->performance_host_filter;
+	}
+	if (!new->performance_host_filter_external) {
+		new->performance_host_filter_external =
+				base->performance_host_filter_external;
 	}
 	if (!new->performance_log_format) {
 		new->performance_log_format = base->performance_log_format;
@@ -1138,6 +1144,21 @@ set_performance_module_host_filter(cmd_parms * cmd, void *dummy,
 }
 
 static const char *
+set_performance_module_host_filter_external(cmd_parms * cmd, void *dummy,
+		const char *arg) {
+	server_rec *s = cmd->server;
+	performance_module_cfg *conf = ap_get_module_config(s->module_config,
+			&performance_module);
+	if (!conf->performance_host_filter_external) {
+		conf->performance_host_filter_external = apr_array_make(cmd->pool, 2,
+				sizeof(char *));
+	}
+	*(const char **) apr_array_push(conf->performance_host_filter_external) =
+			arg;
+	return NULL;
+}
+
+static const char *
 set_performance_module_external_handler(cmd_parms * cmd, void *dummy,
 		const char *arg) {
 
@@ -1343,27 +1364,11 @@ void performance_module_save_to_db(double req_time, apr_pool_t *pool,
 	}
 
 	if (need_to_write) {
-		if (cfg->performance_host_filter || cfg->performance_uri
-				|| cfg->performance_script) {
-			if (cfg->performance_host_filter) {
-				if (!match_hostname(cfg->performance_host_filter,
+		if (cfg->performance_host_filter_external) {
+			if (cfg->performance_host_filter_external) {
+				if (!match_hostname(cfg->performance_host_filter_external,
 						req_begin->hostname))
 					need_to_write = 0;
-			}
-
-			if (cfg->performance_uri) {
-				if (need_to_write) {
-					if (!match_script(cfg->performance_uri, req_begin->uri))
-						need_to_write = 0;
-				}
-			}
-
-			if (cfg->performance_script) {
-				if (need_to_write) {
-					if (!match_script(cfg->performance_script,
-							req_begin->script))
-						need_to_write = 0;
-				}
 			}
 
 		}
@@ -1959,7 +1964,7 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 		}
 
 		apr_status_t rv_tmp = apr_thread_mutex_create(&mutex_db,
-				APR_THREAD_MUTEX_DEFAULT, main_server->process->pool);
+		APR_THREAD_MUTEX_DEFAULT, main_server->process->pool);
 		if (rv_tmp != APR_SUCCESS) {
 			cfg->performance_enabled = 0;
 			ap_log_error(APLOG_MARK, APLOG_WARNING, errno, main_server,
@@ -2853,6 +2858,9 @@ static const command_rec performance_module_cmds[] =
 				"Statistics output handler for users"),
 		AP_INIT_ITERATE ("PerformanceHostFilter",
 				set_performance_module_host_filter, NULL, RSRC_CONF,
+				"hostnames list"),
+		AP_INIT_ITERATE ("PerformanceHostFilterExternal",
+				set_performance_module_host_filter_external, NULL, RSRC_CONF,
 				"hostnames list"),
 		AP_INIT_ITERATE ("PerformanceURI",
 				set_performance_module_uri, NULL, RSRC_CONF,
