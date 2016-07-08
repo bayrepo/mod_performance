@@ -266,6 +266,11 @@ unsigned long long glbHtz;
 char *performance_paremeters[] = { "DATE", "CPU", "MEM", "URI", "HOST",
 		"SCRIPT", "EXCTIME", "CPUS", "MEMMB", "BYTES_W", "BYTES_R" };
 
+static int match_hostname(apr_array_header_t * allowed_hosts,
+		const char *hostname);
+static int match_script(apr_array_header_t * scripts_list,
+		const char *script_name);
+
 void init_global_mem() {
 	memset(&global_mem, 0, sizeof(glibtop_mem_own));
 #if defined(linux)
@@ -443,7 +448,7 @@ static int sqlite3_check_for_tables(apr_pool_t * p, server_rec * main_server) {
 	char *err = sql_adapter_get_create_table(p, log_type, mutex_db);
 	if (err) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "database table creation error: %s", err);
+				MODULE_PREFFIX "database table creation error: %s", err);
 		return 0;
 	}
 	return 1;
@@ -462,7 +467,7 @@ static void sqlite3_save_request_info(apr_pool_t * p, server_rec * main_server,
 			dbr, dbw);
 	if (err) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "database insert error: %s", err);
+				MODULE_PREFFIX "database insert error: %s", err);
 	}
 
 	//apr_pool_clear (inner_pool);
@@ -481,7 +486,7 @@ static void sqlite3_delete_request_info(apr_pool_t * p,
 			performance_history, mutex_db);
 	if (err) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "database deletion error: %s", err);
+				MODULE_PREFFIX "database deletion error: %s", err);
 	}
 
 	//apr_pool_clear (inner_pool);
@@ -866,8 +871,8 @@ set_performance_module_cpu_top_depr(cmd_parms * cmd, void *dummy,
 		return err;
 	}
 
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - use new PerformanceUseCPUTopMode");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - use new PerformanceUseCPUTopMode");
 	return NULL;
 }
 
@@ -1338,6 +1343,33 @@ void performance_module_save_to_db(double req_time, apr_pool_t *pool,
 	}
 
 	if (need_to_write) {
+		if (cfg->performance_host_filter || cfg->performance_uri
+				|| cfg->performance_script) {
+			if (cfg->performance_host_filter) {
+				if (!match_hostname(cfg->performance_host_filter,
+						req_begin->hostname))
+					need_to_write = 0;
+			}
+
+			if (cfg->performance_uri) {
+				if (need_to_write) {
+					if (!match_script(cfg->performance_uri, req_begin->uri))
+						need_to_write = 0;
+				}
+			}
+
+			if (cfg->performance_script) {
+				if (need_to_write) {
+					if (!match_script(cfg->performance_script,
+							req_begin->script))
+						need_to_write = 0;
+				}
+			}
+
+		}
+	}
+
+	if (need_to_write) {
 
 		switch (log_type) {
 		case 0: {
@@ -1374,8 +1406,8 @@ static void performance_module_alarm(int sig) {
 	if (sig == SIGALRM) {
 		sqlite3_delete_request_info(root_pool, root_server,
 				performance_history);
-		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, root_server, MODULE_PREFFIX
-		"Deleting old performance items to trash was successfully");
+		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, root_server,
+				MODULE_PREFFIX "Deleting old performance items to trash was successfully");
 		alarm(DELETE_INTERVAL);
 	}
 }
@@ -1383,8 +1415,8 @@ static void performance_module_alarm(int sig) {
 pid_t global_cur_pid = 0;
 
 static void restar_daemon_interval(int sig, siginfo_t * si, void *uc) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, root_server, MODULE_PREFFIX
-	" daemon will be restarted by scheduler. Next restart %s seconds",
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, root_server,
+			MODULE_PREFFIX " daemon will be restarted by scheduler. Next restart %s seconds",
 			performance_check_extm ? performance_check_extm : "Ooops");
 	daemon_should_exit++;
 	;
@@ -1400,10 +1432,10 @@ static void performance_db_defrag_action(int sig, siginfo_t * si, void *uc) {
 	char *res = sql_adapter_optimize_table(_sub_pool, log_type, mutex_db);
 	if (res) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, root_server,
-		MODULE_PREFFIX "Data Base optimizing filed %s", res);
+				MODULE_PREFFIX "Data Base optimizing filed %s", res);
 	} else {
 		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, root_server,
-		MODULE_PREFFIX "Data Base optimizing successful");
+				MODULE_PREFFIX "Data Base optimizing successful");
 	}
 	END_SUB_POOL_SECTION(pperf, _sub_pool);
 	reset_timer(sig, performance_db_defrag);
@@ -1447,7 +1479,7 @@ void performance_server_main_cycle(int l_sock, server_rec *main_server,
 			write_debug_info("Poll error %d", ret);
 			if (errno != EINTR) {
 				ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-				MODULE_PREFFIX"Error polling on socket");
+						MODULE_PREFFIX"Error polling on socket");
 				return;
 			}
 			/*TODO подумать- а что если все-таки доберется до конца дескрипторов
@@ -1474,11 +1506,8 @@ void performance_server_main_cycle(int l_sock, server_rec *main_server,
 						(fds + nfds)->fd);
 
 				if ((fds + nfds)->fd == -1) {
-					ap_log_error(
-					APLOG_MARK,
-					APLOG_ERR,
-					errno, main_server,
-					MODULE_PREFFIX "Error on polling socket. Accepting error");
+					ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
+							MODULE_PREFFIX "Error on polling socket. Accepting error");
 
 					cleanup_sock(0, (fds + nfds)->fd, 1);
 					fds = (struct pollfd *) realloc(fds,
@@ -1577,8 +1606,8 @@ void performance_server_main_cycle(int l_sock, server_rec *main_server,
 				else
 					add_item_to_removelist((fds + i)->fd);
 				ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-				MODULE_PREFFIX "Error on polling socket. Error %d",
-				errno);
+						MODULE_PREFFIX "Error on polling socket. Error %d",
+						errno);
 
 				cleanup_sock(0, (fds + i)->fd, 2);
 				nfds--;
@@ -1662,7 +1691,7 @@ static int performance_module_server(void *data) {
 
 	if ((sd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "Couldn't create unix domain socket");
+				MODULE_PREFFIX "Couldn't create unix domain socket");
 		return errno;
 	}
 
@@ -1689,8 +1718,8 @@ static int performance_module_server(void *data) {
 		rv = apr_file_perms_set(performance_socket, performance_socket_perm);
 	}
 	if (rv != APR_SUCCESS) {
-		ap_log_error(APLOG_MARK, APLOG_CRIT, rv, main_server, MODULE_PREFFIX
-		"Couldn't set permissions on unix domain socket %s",
+		ap_log_error(APLOG_MARK, APLOG_CRIT, rv, main_server,
+				MODULE_PREFFIX "Couldn't set permissions on unix domain socket %s",
 				performance_socket);
 		close(sd);
 		return rv;
@@ -1698,7 +1727,7 @@ static int performance_module_server(void *data) {
 
 	if (listen(sd, DEFAULT_PERF_LISTENBACKLOG) < 0) {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "Couldn't listen on unix domain socket");
+				MODULE_PREFFIX "Couldn't listen on unix domain socket");
 		close(sd);
 		return errno;
 	}
@@ -1706,8 +1735,7 @@ static int performance_module_server(void *data) {
 	if (!geteuid()) {
 		if (chown(performance_socket, unixd_config.user_id, -1) < 0) {
 			ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-			MODULE_PREFFIX
-			"Couldn't change owner of unix domain socket %s",
+					MODULE_PREFFIX "Couldn't change owner of unix domain socket %s",
 					performance_socket);
 			close(sd);
 			return errno;
@@ -1717,7 +1745,7 @@ static int performance_module_server(void *data) {
 	unixd_setup_child();
 
 	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-	MODULE_PREFFIX "Performance daemon started successfully");
+			MODULE_PREFFIX "Performance daemon started successfully");
 	if (log_type) {
 		apr_signal(SIGALRM, performance_module_alarm);
 		alarm(DELETE_INTERVAL);
@@ -1744,7 +1772,7 @@ static int performance_module_server(void *data) {
 		long get_interval = gettimeinterval(performance_db_defrag);
 		if (get_interval) {
 			ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-			MODULE_PREFFIX "Optimize mode enabled");
+					MODULE_PREFFIX "Optimize mode enabled");
 			addtimer(pperf, get_interval, 1, &performance_db_defrag_action);
 		}
 	}
@@ -1765,13 +1793,13 @@ static int performance_module_server(void *data) {
 			pperf);
 	if (rv != APR_SUCCESS) {
 		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-		MODULE_PREFFIX "Can't start memory watcher");
+				MODULE_PREFFIX "Can't start memory watcher");
 	} else {
 		rv = apr_thread_create(&thd_arr2, thd_attr2, proceed_data_every_second2,
 				pperf, pperf);
 		if (rv != APR_SUCCESS) {
 			ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-			MODULE_PREFFIX "Can't start counters saver");
+					MODULE_PREFFIX "Can't start counters saver");
 			daemon_should_exit = 1;
 			rv = apr_thread_join(&rv, thd_arr);
 		} else {
@@ -1805,10 +1833,10 @@ static void performance_module_maint(int reason, void *data, apr_wait_t status) 
 		if (!stopping) {
 			if (status == DAEMON_STARTUP_ERROR) {
 				ap_log_error(APLOG_MARK, APLOG_CRIT, errno, NULL,
-				MODULE_PREFFIX "daemon failed to initialize");
+						MODULE_PREFFIX "daemon failed to initialize");
 			} else {
 				ap_log_error(APLOG_MARK, APLOG_ERR, errno, NULL,
-				MODULE_PREFFIX "daemon process died, restarting");
+						MODULE_PREFFIX "daemon process died, restarting");
 				performance_module_start(root_pool, root_server, proc);
 			}
 		}
@@ -1826,13 +1854,8 @@ static void performance_module_maint(int reason, void *data, apr_wait_t status) 
 				performance_use_pid ?
 						performance_socket : performance_socket_no_pid)
 				< 0&& errno != ENOENT) {
-			ap_log_error(
-			APLOG_MARK,
-			APLOG_ERR,
-			errno,
-			NULL,
-			MODULE_PREFFIX
-			"Couldn't unlink unix domain socket %s",
+			ap_log_error(APLOG_MARK, APLOG_ERR, errno, NULL,
+					MODULE_PREFFIX "Couldn't unlink unix domain socket %s",
 					performance_use_pid ?
 							performance_socket : performance_socket_no_pid);
 		}
@@ -1868,7 +1891,7 @@ static int performance_module_start(apr_pool_t * p, server_rec * main_server,
 #endif
 	} else {
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "couldn't spawn daemon process");
+				MODULE_PREFFIX "couldn't spawn daemon process");
 		return DECLINED;
 	}
 
@@ -1895,8 +1918,7 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 		if (sql_adapter_load_library(p, log_type) < 0) {
 			rc = 1;
 			ap_log_error(APLOG_MARK, APLOG_WARNING, errno, main_server,
-			MODULE_PREFFIX
-			"Can't load db library");
+					MODULE_PREFFIX "Can't load db library");
 		} else {
 
 			if (sql_adapter_connect_db(p, log_type, performance_dbhost,
@@ -1904,8 +1926,7 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 					performance_dbname, performance_db) < 0) {
 				rc = 1;
 				ap_log_error(APLOG_MARK, APLOG_WARNING, errno, main_server,
-				MODULE_PREFFIX
-				"Can't connect to db");
+						MODULE_PREFFIX "Can't connect to db");
 			} else
 				rc = OK;
 		}
@@ -1915,8 +1936,7 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 	if (rc) {
 		cfg->performance_enabled = 0;
 		ap_log_error(APLOG_MARK, APLOG_WARNING, errno, main_server,
-		MODULE_PREFFIX
-		"Internal error, performance module will be disabled :(");
+				MODULE_PREFFIX "Internal error, performance module will be disabled :(");
 	} else {
 
 		if (log_type == 1) {
@@ -1924,28 +1944,26 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 			APR_FPROT_UREAD | APR_FPROT_UWRITE | APR_FPROT_UEXECUTE);
 			if (rv != APR_SUCCESS) {
 				ap_log_error(APLOG_MARK, APLOG_CRIT, rv, main_server,
-				MODULE_PREFFIX
-				"Couldn't set permissions on database file %s", performance_db);
+						MODULE_PREFFIX "Couldn't set permissions on database file %s",
+						performance_db);
 				cfg->performance_enabled = 0;
 			}
 			if (!geteuid()) {
 				if (chown(performance_db, unixd_config.user_id, -1) < 0) {
 					ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-					MODULE_PREFFIX
-					"Couldn't change owner of database file %s",
+							MODULE_PREFFIX "Couldn't change owner of database file %s",
 							performance_db);
 					cfg->performance_enabled = 0;
 				}
 			}
 		}
 
-		apr_status_t rv_tmp = apr_thread_mutex_create(&mutex_db, APR_THREAD_MUTEX_DEFAULT,
-				main_server->process->pool);
-		if (rv_tmp != APR_SUCCESS){
+		apr_status_t rv_tmp = apr_thread_mutex_create(&mutex_db,
+				APR_THREAD_MUTEX_DEFAULT, main_server->process->pool);
+		if (rv_tmp != APR_SUCCESS) {
 			cfg->performance_enabled = 0;
 			ap_log_error(APLOG_MARK, APLOG_WARNING, errno, main_server,
-				MODULE_PREFFIX
-				"Internal error(can't create db mutex), performance module will be disabled :(");
+					MODULE_PREFFIX "Internal error(can't create db mutex), performance module will be disabled :(");
 		}
 
 		if (log_type) {
@@ -1973,14 +1991,14 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 	if (glbHtz == (unsigned long long) -1) {
 		cfg->performance_enabled = 0;
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "CPU HZ identification failed");
+				MODULE_PREFFIX "CPU HZ identification failed");
 	}
 
 #if defined(linux)
 	if (glibtop_init_own() < 0) {
 		cfg->performance_enabled = 0;
 		ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
-		MODULE_PREFFIX "pseudo glib_top_init failed");
+				MODULE_PREFFIX "pseudo glib_top_init failed");
 	}
 #endif
 
@@ -1998,13 +2016,12 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 
 	if (!first_time) {
 		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-		MODULE_PREFFIX "version " PERFORMANCE_MODULE_VERSION
-		" loaded");
+				MODULE_PREFFIX "version " PERFORMANCE_MODULE_VERSION " loaded");
 	}
 
 	if (cfg->performance_enabled) {
 		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-		MODULE_PREFFIX "module enabled :)");
+				MODULE_PREFFIX "module enabled :)");
 
 		if (!first_time) {
 			parent_pid = getpid();
@@ -2016,11 +2033,11 @@ static int performance_module_init(apr_pool_t * p, apr_pool_t * plog,
 				return return_value;
 			}
 			ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-			MODULE_PREFFIX "server started :)");
+					MODULE_PREFFIX "server started :)");
 		}
 	} else {
 		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, main_server,
-		MODULE_PREFFIX "module disabled :(");
+				MODULE_PREFFIX "module disabled :(");
 	}
 
 	ap_mpm_query(AP_MPMQ_HARD_LIMIT_THREADS, &thread_limit);
@@ -2407,8 +2424,9 @@ static int performance_module_handler(request_rec * r) {
 	write_debug_info("Proceed handler %s - PID %d, TID %d need prcd %d",
 			r->handler ? r->handler : "NULL", getpid(), gettid(), need_proceed);
 	if (need_proceed) {
-		if(registered_filter) {
-			ap_add_output_filter("MODPERF_RESULT_FILTER", NULL, r, r->connection);
+		if (registered_filter) {
+			ap_add_output_filter("MODPERF_RESULT_FILTER", NULL, r,
+					r->connection);
 		}
 		int retval;
 
@@ -2460,7 +2478,7 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 
 	filter_used = 1;
 
-	if (!registered_filter){
+	if (!registered_filter) {
 		ap_remove_output_filter(f);
 		return ap_pass_brigade(f->next, in);
 	}
@@ -2468,13 +2486,14 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 	write_debug_info("Proceed handler %s - PID %d, TID %d End cicle FD %d",
 			r->handler ? r->handler : "NULL", getpid(), gettid(), sd);
 
-    int found_eos_result = (!APR_BRIGADE_EMPTY(in) && APR_BUCKET_IS_EOS(APR_BRIGADE_LAST(in)));
-    status_tmp = ap_pass_brigade(f->next, in);
-    if (status_tmp == APR_SUCCESS) {
-      if (!found_eos_result) {
-        return status_tmp;
-      }
-    }
+	int found_eos_result = (!APR_BRIGADE_EMPTY(in)
+			&& APR_BUCKET_IS_EOS(APR_BRIGADE_LAST(in)));
+	status_tmp = ap_pass_brigade(f->next, in);
+	if (status_tmp == APR_SUCCESS) {
+		if (!found_eos_result) {
+			return status_tmp;
+		}
+	}
 
 	if (sd) {
 
@@ -2501,7 +2520,7 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 			write_debug_info(
 					"Proceed handler %s - PID %d, TID %d End error FD %d %s",
 					r->handler ? r->handler : "NULL", getpid(), gettid(), sd,
-					req->uri );
+					req->uri);
 		}
 		write_debug_info(
 				"Proceed handler %s - PID %d, TID %d End cicle ok FD %d %s",
@@ -2522,11 +2541,10 @@ static apr_status_t ap_modperf_out_filter(ap_filter_t *f,
 static int performance_module_leave_handler(request_rec * r) {
 	intptr_t sd;
 
-	if(registered_filter && filter_used) {
-		  filter_used = 0;
-	      return DECLINED;
+	if (registered_filter && filter_used) {
+		filter_used = 0;
+		return DECLINED;
 	}
-
 
 	apr_threadkey_private_get((void *) &sd, key);
 	write_debug_info("Proceed handler %s - PID %d, TID %d End cicle FD %d",
@@ -2601,8 +2619,8 @@ static int performance_open_log(server_rec * s, apr_pool_t * p) {
 
 		pl = ap_open_piped_log(p, pname);
 		if (pl == NULL) {
-			ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, MODULE_PREFFIX
-			" couldn't spawn Performance log pipe %s",
+			ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
+					MODULE_PREFFIX " couldn't spawn Performance log pipe %s",
 					cfg->performance_logname);
 			return 0;
 		}
@@ -2614,8 +2632,9 @@ static int performance_open_log(server_rec * s, apr_pool_t * p) {
 
 		if ((rv = apr_file_open(&cfg->fd, fname,
 		APR_WRITE | APR_APPEND | APR_CREATE, APR_OS_DEFAULT, p)) != APR_SUCCESS) {
-			ap_log_error(APLOG_MARK, APLOG_ERR, rv, s, MODULE_PREFFIX
-			" could not open Performance log file %s.", fname);
+			ap_log_error(APLOG_MARK, APLOG_ERR, rv, s,
+					MODULE_PREFFIX " could not open Performance log file %s.",
+					fname);
 			return 0;
 		}
 	}
@@ -2644,7 +2663,8 @@ APR_DECLARE_OPTIONAL_FN(int, match_external_handlers, (request_rec * r));
 
 void send_begininfo_to_daemon(request_rec * r, pid_t pid, int *sd) {
 
-	if(!r || (r && !r->server)) return;
+	if (!r || (r && !r->server))
+		return;
 
 	performance_module_cfg *cfg = performance_module_sconfig(r);
 
@@ -2658,8 +2678,8 @@ void send_begininfo_to_daemon(request_rec * r, pid_t pid, int *sd) {
 			sizeof(performance_module_send_req));
 
 	modperformance_sendbegin_info_send_info(req, r->uri, r->filename,
-			r->server->server_hostname, (char *) r->method,
-			r->args, r->canonical_filename, 0, r->server, r->pool,
+			r->server->server_hostname, (char *) r->method, r->args,
+			r->canonical_filename, 0, r->server, r->pool,
 			cfg->performance_use_cononical_name);
 
 	if (performance_send_data_to(*sd, (const void *) req,
@@ -2746,54 +2766,54 @@ static void register_hook(apr_pool_t * p) {
 static const char *
 set_performance_module_enabled_extended(cmd_parms * cmd, void *dummy,
 		const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformanceExtended");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformanceExtended");
 	return NULL;
 }
 
 static const char *
 set_performance_module_check_daemon(cmd_parms * cmd, void *dummy,
 		const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformanceCheckDaemon");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformanceCheckDaemon");
 	return NULL;
 }
 
 static const char *
 set_performance_module_periodical_watch(cmd_parms * cmd, void *dummy,
 		const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformancePeriodicalWatch");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformancePeriodicalWatch");
 	return NULL;
 }
 
 static const char *
 set_performance_module_check_daemon_interval(cmd_parms * cmd, void *dummy,
 		const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformanceCheckDaemonInterval");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformanceCheckDaemonInterval");
 	return NULL;
 }
 
 static const char *
 set_performance_module_check_daemon_memory(cmd_parms * cmd, void *dummy,
 		const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformanceCheckDaemonMemory");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformanceCheckDaemonMemory");
 	return NULL;
 }
 
 static const char *
 set_performance_module_stacksize(cmd_parms * cmd, void *dummy, const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformanceStackSize");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformanceStackSize");
 	return NULL;
 }
 
 static const char *
 set_performance_module_maxthreads(cmd_parms * cmd, void *dummy, const char *arg) {
-	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server, MODULE_PREFFIX
-	"Deprecated parameter - PerformanceMaxThreads");
+	ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
+			MODULE_PREFFIX "Deprecated parameter - PerformanceMaxThreads");
 	return NULL;
 }
 

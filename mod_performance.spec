@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 17%{?dist}
+Release: 18%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -64,6 +64,9 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Fri Jul 08 2016 Alexey Berezhok <bayrepo.info@gmail.com> 0.4-18
+- Added filtering for external requests
+
 * Thu Jul 07 2016 Alexey Berezhok <bayrepo.info@gmail.com> 0.4-17
 - Fix CPU calculation for FreeBSD
 
