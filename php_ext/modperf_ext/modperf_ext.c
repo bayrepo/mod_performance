@@ -18,6 +18,12 @@ static int le_modperf_ext;
 #define PHP_FE_END {NULL, NULL, NULL}
 #endif
 
+/* Macros for PHP 5.2 */
+#ifndef zend_parse_parameters_none
+#define zend_parse_parameters_none()                                        \
+    zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "")
+#endif
+
 /* {{{ modperf_ext_functions[]
  *
  */
