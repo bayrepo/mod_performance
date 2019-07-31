@@ -20,4 +20,4 @@ Module can work with such apache configurations:
     Apache + suphp (patched by mod_performance patch)
     Apache + php-fpm (patched by mod_performance patch)
 
-More info http://bayrepo.net/
+More info http://putey.net/
