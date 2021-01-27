@@ -9,10 +9,10 @@ ARCH=$(shell uname -m)
 
 ifeq "$(ARCH)" "x86_64"
 BLIB=lib64
-CFLAGS=-O2 -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic -fno-strict-aliasing
+CFLAGS=-O2 -pipe -Wall -Wno-format-truncation -Wno-unused-but-set-variable -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic -fno-strict-aliasing
 else
 BLIB=lib
-CFLAGS=-O2 -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -mtune=generic -fno-strict-aliasing
+CFLAGS=-O2 -pipe -Wall -Wno-format-truncation -Wno-unused-but-set-variable -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -mtune=generic -fno-strict-aliasing
 endif
 
 ##Check for Linux
@@ -155,7 +155,7 @@ ifneq "$(APVER24)" ""
 DEFS=-DAPACHE2_4
 endif
 
-DEFS:=$(DEFS) $(SUBREL)
+DEFS:=$(DEFS) $(SUBREL) $(CFLAGS)
 
 #   the default target
 all: local-shared-build libr

@@ -10,6 +10,21 @@
 #include "SAPI.h"
 #include "php_modperf_ext.h"
 
+#if PHP_MAJOR_VERSION >= 8
+#ifndef TSRMLS_DC
+#define TSRMLS_DC
+#endif
+
+#ifndef TSRMLS_C
+#define TSRMLS_C
+#endif
+
+#ifndef TSRMLS_CC
+#define TSRMLS_CC
+#endif
+#endif
+
+
 ZEND_DECLARE_MODULE_GLOBALS(modperf_ext)
 
 static int le_modperf_ext;

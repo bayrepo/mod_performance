@@ -1,13 +1,13 @@
 ﻿Использование модуля
 
-Установка на CentOS5 (root)
+Установка на CentOS5/6/7/8 (root)
 
-1) yum install httpd-devel apr-devel gd-devel sqlite3
+1) yum install httpd-devel apr-devel gd-devel sqlite3 ("yum install httpd-devel apr-devel gd-devel sqlite" for CentOS8)
 2) mkdir ~/tmp
 3) cd ~/tmp
 4) wget http://www.lexvit.dn.ua/modperf/getlast -O mod_performance.tar.gz 
 5) tar -xvf mod_performance.tar.gz --strip 1
-6) make
+6) make (--make CFLAGS="-O2 -pipe -Wall -Wno-format-truncation -Wno-unused-but-set-variable -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic -fno-strict-aliasing" -- for CentOS8)
 7) cp ~/tmp/.libs/mod_performance.so /etc/httpd/modules/
 8) cp ~/tmp/mod_performance.conf /etc/httpd/conf.d/
 опционально, если не заработал с настройками по умолчанию
