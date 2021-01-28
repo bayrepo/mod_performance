@@ -39,6 +39,15 @@ static int le_modperf_ext;
     zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "")
 #endif
 
+#if PHP_MAJOR_VERSION >= 8
+ZEND_BEGIN_ARG_INFO_EX(arginfo_void, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
+const zend_function_entry modperf_ext_functions[] = {
+PHP_FE(modperf_info, arginfo_void)
+PHP_FE_END };
+
+#else
 /* {{{ modperf_ext_functions[]
  *
  */
@@ -46,6 +55,7 @@ const zend_function_entry modperf_ext_functions[] = {
 PHP_FE(modperf_info, NULL)
 PHP_FE_END };
 /* }}} */
+#endif
 
 /* {{{ modperf_ext_module_entry
  */
