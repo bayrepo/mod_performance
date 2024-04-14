@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Alexey Berezhok (alexey_com@ukr.net, bayrepo.info@gmail.com)
+ * Copyright 2012 Alexey Berezhok (bayrepo.info@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
  *
  *  Created on: Nov 26, 2012
  *      Author: Alexey Berezhok
- *		E-mail: alexey_com@ukr.net
+ *		E-mail: a@bayrepo.ru
  */
 
 //THIS SOFTWARE AND DOCUMENTATION IS PROVIDED "AS IS," AND COPYRIGHT HOLDERS

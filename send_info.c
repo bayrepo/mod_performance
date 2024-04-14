@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Alexey Berezhok (alexey_com@ukr.net, bayrepo.info@gmail.com)
+ * Copyright 2012 Alexey Berezhok (bayrepo.info@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
  *
  *  Created on: Aug 8, 2014
  *      Author: Alexey Berezhok
- *		E-mail: alexey_com@ukr.net
+ *		E-mail: a@bayrepo.ru
  */
 
 //THIS SOFTWARE AND DOCUMENTATION IS PROVIDED "AS IS," AND COPYRIGHT HOLDERS
@@ -70,6 +70,10 @@
 
 #include "send_info.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+
 pid_t gettid(void) {
 #if defined(linux)
   return syscall (__NR_gettid);
@@ -116,11 +120,11 @@ void modperformance_sendbegin_info_send_info(performance_module_send_req *req,
 	req->current_tid = use_tid ? gettid() : getpid();
 	req->srv = server;
 	if (hostname)
-		apr_cpystrn(req->hostname, hostname, sizeof(req->hostname));
+		apr_cpystrn(req->hostname, hostname, sizeof(req->hostname)-1);
 	else
 		apr_cpystrn(req->hostname, "", sizeof(req->hostname));
 	if (uri)
-		apr_cpystrn(req->uri, uri, sizeof(req->uri));
+		apr_cpystrn(req->uri, uri, sizeof(req->uri)-1);
 	else
 		apr_cpystrn(req->uri, "", sizeof(req->uri));
 
@@ -128,7 +132,7 @@ void modperformance_sendbegin_info_send_info(performance_module_send_req *req,
 #ifndef _LIBBUILD
 	if(!pool){
 #endif
-	snprintf(str_b, 512, "%s:%s%s%s", method, req->uri,
+	snprintf(str_b, 511, "%s:%s%s%s", method, req->uri,
 			args ? "?" : "", args ? args : "");
 	str = str_b;
 #ifndef _LIBBUILD
@@ -137,17 +141,16 @@ void modperformance_sendbegin_info_send_info(performance_module_send_req *req,
 			args ? "?" : "", args ? args : "");
 	}
 #endif
-	apr_cpystrn(req->uri, str, sizeof(req->uri));
-
+	apr_cpystrn(req->uri, str, sizeof(req->uri)-1);
 
 	if (performance_use_cononical_name) {
 		if (canonical_filename)
-			apr_cpystrn(req->script, canonical_filename, sizeof(req->script));
+			apr_cpystrn(req->script, canonical_filename, sizeof(req->script)-1);
 		else
 			apr_cpystrn(req->script, "", sizeof(req->script));
 	} else {
 		if (filename)
-			apr_cpystrn(req->script, filename, sizeof(req->script));
+			apr_cpystrn(req->script, filename, sizeof(req->script)-1);
 		else
 			apr_cpystrn(req->script, "", sizeof(req->script));
 	}
@@ -188,12 +191,12 @@ void modperformance_sendend_info_send_info(performance_module_send_req *req,
 	req->srv = server;
 
 	if (hostname)
-		apr_cpystrn(req->hostname, hostname, sizeof(req->hostname));
+		apr_cpystrn(req->hostname, hostname, sizeof(req->hostname)-1);
 	else
 		apr_cpystrn(req->hostname, "", sizeof(req->hostname));
 
 	if (uri)
-		apr_cpystrn(req->uri, uri, sizeof(req->uri));
+		apr_cpystrn(req->uri, uri, sizeof(req->uri)-1);
 	else
 		apr_cpystrn(req->uri, "", sizeof(req->uri));
 
@@ -201,7 +204,7 @@ void modperformance_sendend_info_send_info(performance_module_send_req *req,
 #ifndef _LIBBUILD
 	if(!pool){
 #endif
-		snprintf(str_b, 512, "%s:%s%s%s", method, req->uri,
+		snprintf(str_b, 511, "%s:%s%s%s", method, req->uri,
 			args ? "?" : "", args ? args : "");
 		str = str_b;
 #ifndef _LIBBUILD
@@ -235,3 +238,5 @@ void modperformance_sendend_info_send_info(performance_module_send_req *req,
 
 	req->command = 1;
 }
+
+#pragma GCC diagnostic pop

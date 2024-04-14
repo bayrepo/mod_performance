@@ -1,7 +1,7 @@
 Summary: Apache module
 Name: mod_performance04
 Version: 0.4
-Release: 18%{?dist}
+Release: 19%{?dist}
 Source0: %{name}-%{version}.tar.bz2
 Group: System Environment/Daemons
 License: ASL 2.0                                                                                                                       
@@ -64,6 +64,9 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Sun Apr 14 2024 Alexey Berezhok <a@bayrepo.ru> 0.4-19
+- Added fixes for building for CentOS 9
+
 * Fri Jul 08 2016 Alexey Berezhok <bayrepo.info@gmail.com> 0.4-18
 - Added filtering for external requests
 

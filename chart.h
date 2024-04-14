@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Alexey Berezhok (alexey_com@ukr.net, bayrepo.info@gmail.com)
+ * Copyright 2012 Alexey Berezhok (bayrepo.info@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,7 @@
  *
  *  Created on: Aug 10, 2011
  *  Author: SKOREE
- *  E-mail: alexey_com@ukr.net
- *  Site: lexvit.dn.ua
+ *  E-mail: a@bayrepo.ru
  */
 
 #ifndef CHART_H_
