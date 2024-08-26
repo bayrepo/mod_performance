@@ -20,4 +20,4 @@ Module can work with such apache configurations:
     Apache + suphp (patched by mod_performance patch)
     Apache + php-fpm (patched by mod_performance patch)
 
-More info https://putey.net/post/mod_performance-0-4-statya-perenesena-iz-docuwiki and https://putey.net/post/mod-performance-dobavlen-php-plagin 
+More info https://brepo.ru/post/mod_performance-0-4-statya-perenesena-iz-docuwiki and https://brepo.ru/post/mod-performance-dobavlen-php-plagin 
