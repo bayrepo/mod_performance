@@ -212,27 +212,16 @@ get_freebsd_cpukvm_info (void * p, pid_t pid, freebsd_get_cpu * fgc)
   memf = _PATH_DEVNULL;
   static kvm_t *kd;
   struct kinfo_proc *kp;
-  int dummy;
   fgc->process_cpu = 0;
   fgc->system_cpu = 0;
   char errbuf[_POSIX2_LINE_MAX];
   int flag = pid, what = KERN_PROC_PID, nentries, i;
   nlistf = NULL;
   kd = kvm_openfiles (nlistf, memf, NULL, O_RDONLY, errbuf);
-  if (kd == 0)
-    {
-      //fprintf(stderr, "%s\n", errbuf);
-      dummy = 1;
-    }
-  else
+  if (kd != 0)
     {
       kp = kvm_getprocs (kd, what, flag, &nentries);
-      if ((kp == NULL && nentries > 0) || (kp != NULL && nentries < 0))
-	{
-	  //fprintf(stderr, "%s\n", kvm_geterr(kd));
-	  dummy = 1;
-	}
-      else
+      if (!((kp == NULL && nentries > 0) || (kp != NULL && nentries < 0)))
 	{
 	  if (nentries > 0)
 	    {
@@ -259,22 +248,13 @@ get_freebsd_io_info (void * p, pid_t pid, freebsd_get_io * fgi)
   char errbuf[_POSIX2_LINE_MAX];
   int flag = pid, what = KERN_PROC_PID, nentries, i;
   nlistf = NULL;
-  int dummy;
   fgi->io_write = 0;
   fgi->io_read = 0;
   kd = kvm_openfiles (nlistf, memf, NULL, O_RDONLY, errbuf);
-  if (kd == 0)
-    //fprintf(stderr, "%s\n", errbuf);
-    dummy = 1;
-  else
+  if (kd != 0)
     {
       kp = kvm_getprocs (kd, what, flag, &nentries);
-      if ((kp == NULL && nentries > 0) || (kp != NULL && nentries < 0))
-	{
-	  //fprintf(stderr, "%s\n", kvm_geterr(kd));
-	  dummy = 1;
-	}
-      else
+      if (!((kp == NULL && nentries > 0) || (kp != NULL && nentries < 0)))
 	{
 	  if (nentries > 0)
 	    {

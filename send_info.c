@@ -72,7 +72,9 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
+#if __GNUC__ == 8
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
 
 pid_t gettid(void) {
 #if defined(linux)
